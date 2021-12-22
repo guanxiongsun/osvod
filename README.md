@@ -43,7 +43,7 @@ Pretrained models are now available at [Baidu](https://pan.baidu.com/s/1qjIAD3oh
 # install PyTorch 1.8.1 with CUDA 10.1
 pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
 
-# install mmcv-full 1.3.17
+# install mmcv-full 1.4.0
 pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html
 
 # install other requirements
