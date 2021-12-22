@@ -172,6 +172,7 @@ def main():
             cfg.model,
             train_cfg=cfg.get('train_cfg'),
             test_cfg=cfg.get('test_cfg'))
+
     model.init_weights()
 
     datasets = [build_dataset(cfg.data.train)]

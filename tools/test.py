@@ -182,10 +182,20 @@ def main():
     cfg.model.train_cfg = None
 
     # for video models
-    if cfg.model.type in ("SELSA", "MAMBA", "RDN"):
-        model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
+    if 'detector' in cfg.model.keys():
+        # multi-frame video model
+        if cfg.model.get('type', False) in ("SELSA", "MAMBA", "RDN"):
+            model = build_model(cfg.model)
+
+        # single-frame video base model
+        else:
+            cfg.model = cfg.model.detector
+            model = build_detector(
+                cfg.model,
+                test_cfg=cfg.get('test_cfg'))
+
+    # for single-frame models
     else:
-        # for single-frame models
         model = build_detector(
             cfg.model,
             test_cfg=cfg.get('test_cfg'))
