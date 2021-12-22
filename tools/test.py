@@ -16,7 +16,7 @@ from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
 from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
                             replace_ImageToTensor)
-from mmdet.models import build_detector
+from mmdet.models import build_detector, build_model
 
 
 def parse_args():
@@ -180,7 +180,16 @@ def main():
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
-    model = build_detector(cfg.model, test_cfg=cfg.get('test_cfg'))
+
+    # for video models
+    if cfg.model.type in ("SELSA", "MAMBA", "RDN"):
+        model = build_model(cfg.model, test_cfg=cfg.get('test_cfg'))
+    else:
+        # for single-frame models
+        model = build_detector(
+            cfg.model,
+            test_cfg=cfg.get('test_cfg'))
+
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)

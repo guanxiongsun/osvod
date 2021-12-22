@@ -15,7 +15,7 @@ from mmcv.utils import get_git_hash
 from mmdet import __version__
 from mmdet.apis import init_random_seed, set_random_seed, train_detector
 from mmdet.datasets import build_dataset
-from mmdet.models import build_detector
+from mmdet.models import build_detector, build_model
 from mmdet.utils import collect_env, get_root_logger
 
 
@@ -152,10 +152,15 @@ def main():
     meta['seed'] = seed
     meta['exp_name'] = osp.basename(args.config)
 
-    model = build_detector(
-        cfg.model,
-        train_cfg=cfg.get('train_cfg'),
-        test_cfg=cfg.get('test_cfg'))
+    # for video models
+    if cfg.model.type in ("SELSA", "MAMBA", "RDN"):
+        model = build_model(cfg.model)
+    else:
+        # for single-frame models
+        model = build_detector(
+            cfg.model,
+            train_cfg=cfg.get('train_cfg'),
+            test_cfg=cfg.get('test_cfg'))
     model.init_weights()
 
     datasets = [build_dataset(cfg.data.train)]
