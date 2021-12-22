@@ -13,6 +13,28 @@ from .transforms import (Albu, CutOut, Expand, MinIoURandomCrop, MixUp, Mosaic,
                          Normalize, Pad, PhotoMetricDistortion, RandomAffine,
                          RandomCenterCropPad, RandomCrop, RandomFlip,
                          RandomShift, Resize, SegRescale, YOLOXHSVRandomAug)
+# add from mmtrack
+from .mmtrack.formatting import (
+    ConcatVideoReferences,
+    ReIDFormatBundle,
+    SeqDefaultFormatBundle,
+    ToList,
+    VideoCollect,
+)
+from .mmtrack.loading import LoadDetections, LoadMultiImagesFromFile, SeqLoadAnnotations
+from .mmtrack.processing import MatchInstances
+from .mmtrack.transforms import (
+    SeqBlurAug,
+    SeqColorAug,
+    SeqCropLikeSiamFC,
+    SeqNormalize,
+    SeqPad,
+    SeqPhotoMetricDistortion,
+    SeqRandomCrop,
+    SeqRandomFlip,
+    SeqResize,
+    SeqShiftScaleAug,
+)
 
 __all__ = [
     'Compose', 'to_tensor', 'ToTensor', 'ImageToTensor', 'ToDataContainer',
@@ -24,5 +46,25 @@ __all__ = [
     'InstaBoost', 'RandomCenterCropPad', 'AutoAugment', 'CutOut', 'Shear',
     'Rotate', 'ColorTransform', 'EqualizeTransform', 'BrightnessTransform',
     'ContrastTransform', 'Translate', 'RandomShift', 'Mosaic', 'MixUp',
-    'RandomAffine', 'YOLOXHSVRandomAug'
+    'RandomAffine', 'YOLOXHSVRandomAug',
+    # mmtrack pipelines
+    "LoadMultiImagesFromFile",
+    "SeqLoadAnnotations",
+    "SeqResize",
+    "SeqNormalize",
+    "SeqRandomFlip",
+    "SeqPad",
+    "SeqDefaultFormatBundle",
+    "VideoCollect",
+    "ConcatVideoReferences",
+    "LoadDetections",
+    "MatchInstances",
+    "SeqRandomCrop",
+    "SeqPhotoMetricDistortion",
+    "SeqCropLikeSiamFC",
+    "SeqShiftScaleAug",
+    "SeqBlurAug",
+    "SeqColorAug",
+    "ToList",
+    "ReIDFormatBundle",
 ]
