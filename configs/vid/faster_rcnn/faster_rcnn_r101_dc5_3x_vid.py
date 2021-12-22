@@ -1,5 +1,5 @@
 _base_ = [
-    "./faster_rcnn_r50_dc5_3x_vid",
+    "./faster_rcnn_r50_dc5_3x_vid.py",
 ]
 
 model = dict(
