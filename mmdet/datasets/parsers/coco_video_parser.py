@@ -161,3 +161,10 @@ class CocoVID(COCO):
             return [self.videos[id] for id in ids]
         elif type(ids) == int:
             return [self.videos[ids]]
+
+    # add from mmpycocotools to use pycocotools
+    def get_cat_ids(self, cat_names=[], sup_names=[], cat_ids=[]):
+        return self.getCatIds(cat_names, sup_names, cat_ids)
+
+    def get_ann_ids(self, img_ids=[], cat_ids=[], area_rng=[], iscrowd=None):
+        return self.getAnnIds(img_ids, cat_ids, area_rng, iscrowd)

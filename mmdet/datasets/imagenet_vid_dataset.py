@@ -70,14 +70,17 @@ class ImagenetVIDDataset(CocoVideoDataset):
             list[dict]: Annotation information from COCO api.
         """
         self.coco = COCO(ann_file)
-        self.cat_ids = self.coco.get_cat_ids(cat_names=self.CLASSES)
+        self.cat_ids = self.coco.getCatIds(catNms=self.CLASSES)
+        # self.cat_ids = self.coco.get_cat_ids(cat_names=self.CLASSES)
         self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)}
 
-        all_img_ids = self.coco.get_img_ids()
+        all_img_ids = self.coco.getImgIds()
+        # all_img_ids = self.coco.get_img_ids()
         self.img_ids = []
         data_infos = []
         for img_id in all_img_ids:
-            info = self.coco.load_imgs([img_id])[0]
+            # info = self.coco.load_imgs([img_id])[0]
+            info = self.coco.loadImgs([img_id])[0]
             info["filename"] = info["file_name"]
             if info["is_vid_train_frame"]:
                 self.img_ids.append(img_id)
@@ -103,7 +106,8 @@ class ImagenetVIDDataset(CocoVideoDataset):
         for vid_id in self.vid_ids:
             img_ids = self.coco.get_img_ids_from_vid(vid_id)
             for img_id in img_ids:
-                info = self.coco.load_imgs([img_id])[0]
+                # info = self.coco.load_imgs([img_id])[0]
+                info = self.coco.loadImgs([img_id])[0]
                 info["filename"] = info["file_name"]
                 if self.test_mode:
                     assert not info[

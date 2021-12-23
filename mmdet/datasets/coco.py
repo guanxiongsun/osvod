@@ -104,7 +104,8 @@ class CocoDataset(CustomDataset):
         # obtain images that contain annotations of the required categories
         ids_in_cat = set()
         for i, class_id in enumerate(self.cat_ids):
-            ids_in_cat |= set(self.coco.cat_img_map[class_id])
+            # ids_in_cat |= set(self.coco.cat_img_map[class_id])
+            ids_in_cat |= set(self.coco.catToImgs[class_id])
         # merge the image id sets of the two conditions and use the merged set
         # to filter out images if self.filter_empty_gt=True
         ids_in_cat &= ids_with_ann

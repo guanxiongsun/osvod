@@ -88,7 +88,7 @@ class CocoVideoDataset(CocoDataset):
                                                 **self.key_img_sampler)
             self.img_ids.extend(img_ids)
             for img_id in img_ids:
-                info = self.coco.load_imgs([img_id])[0]
+                info = self.coco.loadImgs([img_id])[0]
                 info['filename'] = info['file_name']
                 data_infos.append(info)
         return data_infos
@@ -236,8 +236,10 @@ class CocoVideoDataset(CocoDataset):
             dict: Annotation information of `img_info`.
         """
         img_id = img_info['id']
-        ann_ids = self.coco.get_ann_ids(img_ids=[img_id], cat_ids=self.cat_ids)
-        ann_info = self.coco.load_anns(ann_ids)
+        # ann_ids = self.coco.get_ann_ids(img_ids=[img_id], cat_ids=self.cat_ids)
+        ann_ids = self.coco.getAnnIds(imgIds=[img_id], catIds=self.cat_ids)
+        # ann_info = self.coco.load_anns(ann_ids)
+        ann_info = self.coco.loadAnns(ann_ids)
         return self._parse_ann_info(img_info, ann_info)
 
     def prepare_results(self, img_info):
