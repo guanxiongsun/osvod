@@ -91,6 +91,16 @@ test_pipeline = [
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
+            dict(
+                type='RandomCenterCropPad',
+                ratios=None,
+                border=None,
+                mean=[0, 0, 0],
+                std=[1, 1, 1],
+                to_rgb=True,
+                test_mode=True,
+                test_pad_mode=['logical_or', 31],
+                test_pad_add_pix=1),
             dict(type='RandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
             dict(type='DefaultFormatBundle'),
@@ -102,36 +112,6 @@ test_pipeline = [
                 keys=['img'])
         ])
 ]
-
-# test_pipeline = [
-#     dict(type='LoadImageFromFile', to_float32=True),
-#     dict(
-#         type='MultiScaleFlipAug',
-#         scale_factor=1.0,
-#         flip=False,
-#         transforms=[
-#             dict(type='Resize', keep_ratio=True),
-#             dict(
-#                 type='RandomCenterCropPad',
-#                 ratios=None,
-#                 border=None,
-#                 mean=[0, 0, 0],
-#                 std=[1, 1, 1],
-#                 to_rgb=True,
-#                 test_mode=True,
-#                 test_pad_mode=['logical_or', 31],
-#                 test_pad_add_pix=1),
-#             dict(type='RandomFlip'),
-#             dict(type='Normalize', **img_norm_cfg),
-#             dict(type='DefaultFormatBundle'),
-#             dict(
-#                 type='Collect',
-#                 meta_keys=('filename', 'ori_shape', 'img_shape', 'pad_shape',
-#                            'scale_factor', 'flip', 'flip_direction',
-#                            'img_norm_cfg', 'border'),
-#                 keys=['img'])
-#         ])
-# ]
 
 # Use RepeatDataset to speed up training
 # data = dict(
