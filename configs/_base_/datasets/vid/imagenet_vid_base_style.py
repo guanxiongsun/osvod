@@ -68,4 +68,3 @@ data = dict(
         test_mode=True,
     ),
 )
-vid_collect = (True,)  # support for vid style collect
