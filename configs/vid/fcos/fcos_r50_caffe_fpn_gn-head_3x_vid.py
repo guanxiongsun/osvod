@@ -1,8 +1,8 @@
 _base_ = [
-    "../../_base_/datasets/vid/imagenet_vid_base_style.py",
     "../../_base_/default_runtime.py",
     "../../_base_/schedules/schedule_1x.py",
 ]
+
 # model settings
 model = dict(
     type='FCOS',
@@ -60,40 +60,78 @@ model = dict(
         nms=dict(type='nms', iou_threshold=0.5),
         max_per_img=100))
 
+# dataset settings
+dataset_type = "ImagenetVIDDataset"
+data_root = "data/ILSVRC/"
+
 img_norm_cfg = dict(
     mean=[102.9801, 115.9465, 122.7717], std=[1.0, 1.0, 1.0], to_rgb=False)
 
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', img_scale=(1000, 600), keep_ratio=True),
-    dict(type='RandomFlip', flip_ratio=0.5),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size_divisor=32),
-    dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+    dict(type="LoadImageFromFile"),
+    dict(type="LoadAnnotations", with_bbox=True),
+    dict(type="Resize", img_scale=(1000, 600), keep_ratio=True),
+    dict(type="RandomFlip", flip_ratio=0.5),
+    dict(type="Normalize", **img_norm_cfg),
+    dict(type="Pad", size_divisor=16),
+    dict(type="DefaultFormatBundle"),
+    dict(type="Collect", keys=["img", "gt_bboxes", "gt_labels"]),
 ]
+
 test_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type="LoadImageFromFile"),
     dict(
-        type='MultiScaleFlipAug',
+        type="MultiScaleFlipAug",
         img_scale=(1000, 600),
         flip=False,
         transforms=[
-            dict(type='Resize', keep_ratio=True),
-            dict(type='RandomFlip'),
-            dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
-            dict(type='ImageToTensor', keys=['img']),
-            dict(type='Collect', keys=['img']),
-        ])
+            dict(type="Resize", keep_ratio=True),
+            dict(type="RandomFlip"),
+            dict(type="Normalize", **img_norm_cfg),
+            dict(type="Pad", size_divisor=16),
+            dict(type="ImageToTensor", keys=["img"]),
+            dict(type="VideoCollect", keys=["img"]),
+        ],
+    ),
 ]
+
 data = dict(
     samples_per_gpu=2,
-    workers_per_gpu=2,
-    train=dict(pipeline=train_pipeline),
-    val=dict(pipeline=test_pipeline),
-    test=dict(pipeline=test_pipeline))
+    workers_per_gpu=4,
+    train=[
+        dict(
+            type=dataset_type,
+            ann_file=data_root + "annotations/imagenet_vid_train.json",
+            img_prefix=data_root + "Data/VID",
+            ref_img_sampler=None,
+            pipeline=train_pipeline,
+        ),
+        dict(
+            type=dataset_type,
+            load_as_video=False,
+            ann_file=data_root + "annotations/imagenet_det_30plus1cls.json",
+            img_prefix=data_root + "Data/DET",
+            ref_img_sampler=None,
+            pipeline=train_pipeline,
+        ),
+    ],
+    val=dict(
+        type=dataset_type,
+        ann_file=data_root + "annotations/imagenet_vid_val.json",
+        img_prefix=data_root + "Data/VID",
+        ref_img_sampler=None,
+        pipeline=test_pipeline,
+        test_mode=True,
+    ),
+    test=dict(
+        type=dataset_type,
+        ann_file=data_root + "annotations/imagenet_vid_val.json",
+        img_prefix=data_root + "Data/VID",
+        ref_img_sampler=None,
+        pipeline=test_pipeline,
+        test_mode=True,
+    ),
+)
 
 # optimizer
 optimizer = dict(
