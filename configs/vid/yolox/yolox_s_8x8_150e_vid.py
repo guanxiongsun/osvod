@@ -68,7 +68,7 @@ train_dataset = dict(
     #     ],
     #     filter_empty_gt=False,
     # ),
-    detaset=[
+    dataset=[
         dict(
             type=dataset_type,
             ann_file=data_root + "annotations/imagenet_vid_train.json",
@@ -116,6 +116,14 @@ data = dict(
     workers_per_gpu=4,
     persistent_workers=True,
     train=train_dataset,
+    val=dict(
+        type=dataset_type,
+        ann_file=data_root + "annotations/imagenet_vid_val.json",
+        img_prefix=data_root + "Data/VID",
+        ref_img_sampler=None,
+        pipeline=test_pipeline,
+        test_mode=True,
+    ),
     test=dict(
         type=dataset_type,
         ann_file=data_root + "annotations/imagenet_vid_val.json",
@@ -173,7 +181,7 @@ custom_hooks = [
         priority=49)
 ]
 checkpoint_config = dict(interval=interval)
-evaluation = dict(metric=["bbox"], interval=total_epochs)
+evaluation = dict(metric=["bbox"], interval=max_epochs)
 # evaluation = dict(
 #     save_best='auto',
 #     # The evaluation interval is 'interval' when running epoch is
