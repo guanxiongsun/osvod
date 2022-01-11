@@ -82,8 +82,8 @@ class SelsaRoIHead(StandardRoIHead):
         # TODO: a more flexible way to decide which feature maps to use
         bbox_feats = self.bbox_roi_extractor(
             x[:self.bbox_roi_extractor.num_inputs],
-            rois,
-            ref_feats=ref_x[:self.bbox_roi_extractor.num_inputs])
+            rois, )
+        #   ref_feats=ref_x[:self.bbox_roi_extractor.num_inputs])
 
         ref_bbox_feats = self.bbox_roi_extractor(
             ref_x[:self.bbox_roi_extractor.num_inputs], ref_rois)
