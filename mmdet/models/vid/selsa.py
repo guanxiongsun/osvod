@@ -19,16 +19,16 @@ class SELSA(BaseVideoDetector):
 
     def __init__(self,
                  detector,
-                 pretrains=None,
+                 pretrained=None,
                  init_cfg=None,
                  frozen_modules=None,
                  train_cfg=None,
                  test_cfg=None):
         super(SELSA, self).__init__(init_cfg)
-        if isinstance(pretrains, dict):
-            warnings.warn('DeprecationWarning: pretrains is deprecated, '
+        if isinstance(pretrained, dict):
+            warnings.warn('DeprecationWarning: pretrained is deprecated, '
                           'please use "init_cfg" instead')
-            detector_pretrain = pretrains.get('detector', None)
+            detector_pretrain = pretrained.get('detector', None)
             if detector_pretrain:
                 detector.init_cfg = dict(
                     type='Pretrained', checkpoint=detector_pretrain)
