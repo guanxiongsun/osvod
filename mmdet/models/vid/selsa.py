@@ -19,16 +19,16 @@ class SELSA(BaseVideoDetector):
 
     def __init__(self,
                  detector,
-                 pretrains=None,
+                 pretrained=None,
                  init_cfg=None,
                  frozen_modules=None,
                  train_cfg=None,
                  test_cfg=None):
         super(SELSA, self).__init__(init_cfg)
-        if isinstance(pretrains, dict):
-            warnings.warn('DeprecationWarning: pretrains is deprecated, '
+        if isinstance(pretrained, dict):
+            warnings.warn('DeprecationWarning: pretrained is deprecated, '
                           'please use "init_cfg" instead')
-            detector_pretrain = pretrains.get('detector', None)
+            detector_pretrain = pretrained.get('detector', None)
             if detector_pretrain:
                 detector.init_cfg = dict(
                     type='Pretrained', checkpoint=detector_pretrain)
@@ -327,10 +327,12 @@ class SELSA(BaseVideoDetector):
             img_metas,
             rescale=rescale)
 
-        results = dict()
-        results['det_bboxes'] = outs[0]
-        if len(outs) == 2:
-            results['det_masks'] = outs[1]
+        # results = dict()
+        # results['det_bboxes'] = outs[0]
+        # if len(outs) == 2:
+        #     results['det_masks'] = outs[1]
+
+        results = outs
         return results
 
     def aug_test(self, imgs, img_metas, **kwargs):

@@ -13,7 +13,8 @@ from torch.utils.data import DataLoader
 
 from .samplers import (DistributedGroupSampler, DistributedSampler,
                        GroupSampler, InfiniteBatchSampler,
-                       InfiniteGroupBatchSampler)
+                       InfiniteGroupBatchSampler,
+                       DistributedVideoSampler)
 
 if platform.system() != 'Windows':
     # https://github.com/pytorch/pytorch/issues/973
@@ -159,8 +160,12 @@ def build_dataloader(dataset,
                 sampler = DistributedGroupSampler(
                     dataset, samples_per_gpu, world_size, rank, seed=seed)
             else:
-                sampler = DistributedSampler(
-                    dataset, world_size, rank, shuffle=False, seed=seed)
+                if hasattr(dataset, 'load_as_video') and dataset.load_as_video:
+                    sampler = DistributedVideoSampler(
+                        dataset, world_size, rank, shuffle=False)
+                else:
+                    sampler = DistributedSampler(
+                        dataset, world_size, rank, shuffle=False, seed=seed)
         else:
             sampler = GroupSampler(dataset,
                                    samples_per_gpu) if shuffle else None

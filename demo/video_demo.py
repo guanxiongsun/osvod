@@ -49,6 +49,7 @@ def main():
         if args.show:
             cv2.namedWindow('video', 0)
             mmcv.imshow(frame, 'video', args.wait_time)
+            cv2.waitKey()
         if args.out:
             video_writer.write(frame)
 

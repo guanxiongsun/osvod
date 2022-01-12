@@ -109,13 +109,15 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
 
     # collect results from all ranks
     if gpu_collect:
-        results = collect_results_gpu(results, len(dataset))
+        # results = collect_results_gpu(results, len(dataset))
+        raise NotImplementedError
     else:
-        results = collect_results_cpu(results, len(dataset), tmpdir)
+        # results = collect_results_cpu(results, len(dataset), tmpdir)
+        results = collect_results_cpu(results, tmpdir)
     return results
 
 
-def collect_results_cpu(result_part, size, tmpdir=None):
+def collect_results_cpu(result_part, tmpdir=None):
     rank, world_size = get_dist_info()
     # create a tmp dir if it is not specified
     if tmpdir is None:
@@ -146,16 +148,18 @@ def collect_results_cpu(result_part, size, tmpdir=None):
         part_list = []
         for i in range(world_size):
             part_file = osp.join(tmpdir, f'part_{i}.pkl')
-            part_list.append(mmcv.load(part_file))
-        # sort the results
-        ordered_results = []
-        for res in zip(*part_list):
-            ordered_results.extend(list(res))
-        # the dataloader may pad some samples
-        ordered_results = ordered_results[:size]
+            # part_list.append(mmcv.load(part_file))
+            part_list.extend(mmcv.load(part_file))
+        # # sort the results
+        # ordered_results = []
+        # for res in zip(*part_list):
+        #     ordered_results.extend(list(res))
+        # # the dataloader may pad some samples
+        # ordered_results = ordered_results[:size]
         # remove tmp dir
         shutil.rmtree(tmpdir)
-        return ordered_results
+        # return ordered_results
+        return part_list
 
 
 def collect_results_gpu(result_part, size):
