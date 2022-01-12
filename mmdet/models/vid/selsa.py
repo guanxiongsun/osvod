@@ -327,10 +327,12 @@ class SELSA(BaseVideoDetector):
             img_metas,
             rescale=rescale)
 
-        results = dict()
-        results['det_bboxes'] = outs[0]
-        if len(outs) == 2:
-            results['det_masks'] = outs[1]
+        # results = dict()
+        # results['det_bboxes'] = outs[0]
+        # if len(outs) == 2:
+        #     results['det_masks'] = outs[1]
+
+        results = outs
         return results
 
     def aug_test(self, imgs, img_metas, **kwargs):
