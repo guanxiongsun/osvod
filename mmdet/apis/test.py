@@ -109,7 +109,8 @@ def multi_gpu_test(model, data_loader, tmpdir=None, gpu_collect=False):
 
     # collect results from all ranks
     if gpu_collect:
-        results = collect_results_gpu(results, len(dataset))
+        # results = collect_results_gpu(results, len(dataset))
+        raise NotImplementedError
     else:
         results = collect_results_cpu(results, len(dataset), tmpdir)
     return results
