@@ -3,8 +3,9 @@ _base_ = [
     "../../_base_/schedules/schedule_1x.py",
 ]
 
+# model settings
 model = dict(
-    type='RepPointsDetector',
+    type='VFNet',
     backbone=dict(
         type='ResNet',
         depth=50,
@@ -20,51 +21,40 @@ model = dict(
         in_channels=[256, 512, 1024, 2048],
         out_channels=256,
         start_level=1,
-        add_extra_convs='on_input',
-        num_outs=5),
+        add_extra_convs='on_output',  # use P5
+        num_outs=5,
+        relu_before_extra_convs=True),
     bbox_head=dict(
-        type='RepPointsHead',
+        type='VFNetHead',
         num_classes=30,
         in_channels=256,
-        feat_channels=256,
-        point_feat_channels=256,
         stacked_convs=3,
-        num_points=9,
-        gradient_mul=0.1,
-        point_strides=[8, 16, 32, 64, 128],
-        point_base_scale=4,
+        feat_channels=256,
+        strides=[8, 16, 32, 64, 128],
+        center_sampling=False,
+        dcn_on_last_conv=False,
+        use_atss=True,
+        use_vfl=True,
         loss_cls=dict(
-            type='FocalLoss',
+            type='VarifocalLoss',
             use_sigmoid=True,
+            alpha=0.75,
             gamma=2.0,
-            alpha=0.25,
+            iou_weighted=True,
             loss_weight=1.0),
-        loss_bbox_init=dict(type='SmoothL1Loss', beta=0.11, loss_weight=0.5),
-        loss_bbox_refine=dict(type='SmoothL1Loss', beta=0.11, loss_weight=1.0),
-        transform_method='moment'),
-
+        loss_bbox=dict(type='GIoULoss', loss_weight=1.5),
+        loss_bbox_refine=dict(type='GIoULoss', loss_weight=2.0)),
     # training and testing settings
     train_cfg=dict(
-        init=dict(
-            assigner=dict(type='PointAssigner', scale=4, pos_num=1),
-            allowed_border=-1,
-            pos_weight=-1,
-            debug=False),
-        refine=dict(
-            assigner=dict(
-                type='MaxIoUAssigner',
-                pos_iou_thr=0.5,
-                neg_iou_thr=0.4,
-                min_pos_iou=0,
-                ignore_iof_thr=-1),
-            allowed_border=-1,
-            pos_weight=-1,
-            debug=False)),
+        assigner=dict(type='ATSSAssigner', topk=9),
+        allowed_border=-1,
+        pos_weight=-1,
+        debug=False),
     test_cfg=dict(
         nms_pre=1000,
         min_bbox_size=0,
         score_thr=0.0001,
-        nms=dict(type='nms', iou_threshold=0.5),
+        nms=dict(type='nms', iou_threshold=0.6),
         max_per_img=100))
 
 # dataset settings
@@ -150,10 +140,12 @@ optimizer = dict(
 )
 
 optimizer_config = dict(_delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
+
 # learning policy
 lr_config = dict(
     policy="step", warmup="linear", warmup_iters=500, warmup_ratio=1.0 / 3, step=[2]
 )
+
 # runtime settings
 total_epochs = 3
 checkpoint_config = dict(interval=3)
