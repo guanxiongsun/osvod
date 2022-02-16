@@ -235,6 +235,9 @@ class CocoVideoDataset(CocoDataset):
         Returns:
             dict: Annotation information of `img_info`.
         """
+        if isinstance(img_info, int):       # for concat_dataset to get_anno_info using int idx (dataset_wrappers.py)
+            img_info = self.data_infos[img_info]
+
         img_id = img_info['id']
         ann_ids = self.coco.get_ann_ids(img_ids=[img_id], cat_ids=self.cat_ids)
         ann_info = self.coco.load_anns(ann_ids)
