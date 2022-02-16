@@ -145,8 +145,8 @@ optimizer = dict(
     paramwise_cfg=dict(norm_decay_mult=0., bias_decay_mult=0.))
 optimizer_config = dict(grad_clip=None)
 
-max_epochs = 150
-num_last_epochs = 10
+max_epochs = 90
+num_last_epochs = 5
 resume_from = None
 interval = 30
 
