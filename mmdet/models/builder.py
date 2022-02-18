@@ -15,6 +15,8 @@ LOSSES = MODELS
 DETECTORS = MODELS
 # for supporting video models
 AGGREGATORS = MODELS
+# for memory
+MEMORY = MODELS
 
 
 def build_backbone(cfg):
@@ -25,6 +27,11 @@ def build_backbone(cfg):
 def build_neck(cfg):
     """Build neck."""
     return NECKS.build(cfg)
+
+
+def build_memory(cfg):
+    """Build neck."""
+    return MEMORY.build(cfg)
 
 
 def build_roi_extractor(cfg):
@@ -45,6 +52,7 @@ def build_head(cfg):
 def build_loss(cfg):
     """Build loss."""
     return LOSSES.build(cfg)
+
 
 def build_aggregator(cfg):
     """Build aggregator model"""
