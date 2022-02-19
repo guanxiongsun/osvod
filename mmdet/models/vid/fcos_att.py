@@ -168,14 +168,30 @@ class FCOSAtt(BaseVideoDetector):
 
         # test with adaptive stride
         if frame_stride < 1:
+            # first frame
+            # init memory with ref_frames
             if frame_id == 0:
                 self.memory.reset()
-                # init memory with ref_frames
                 # do detection
                 ref_bboxes = self.detector.simple_test(ref_img[0], ref_img_metas[0])
 
                 # write into memory
                 ref_x = self.detector.backbone(ref_img[0])
+                # memory before or after fpn
+                if self.memory.before_fpn:
+                    self.memory.write_operation(ref_x, ref_bboxes)
+                else:
+                    if self.detector.with_neck:
+                        ref_x = self.detector.neck(ref_x)
+                    self.memory.write_operation(ref_x, ref_bboxes)
+
+            # no feats in memory
+            if len(self.memory.memories[0]) == 0:
+                # do detection
+                ref_bboxes = self.detector.simple_test(img, img_metas)
+
+                # write into memory
+                ref_x = self.detector.backbone(img)
                 # memory before or after fpn
                 if self.memory.before_fpn:
                     self.memory.write_operation(ref_x, ref_bboxes)
