@@ -34,73 +34,6 @@ class MPN(BaseModule):
             _memory = MemoryBank(_in_channels)
             self.memories.append(_memory)
 
-    # def write_single_level(self, x, stride, bboxes):
-    #     """
-    #     save pixels within detected boxes into memory
-    #     :param stride: stride of feature map
-    #     :param x: [N, C, H, W]
-    #     :param bboxes: [N, 5]
-    #     :return
-    #     """
-    #     # no obj detected
-    #     if all(bboxes) == 0:
-    #         # do nothing
-    #         return
-    #
-    #     pred_labels = proposals.get_field("labels").detach().cpu().numpy()
-    #     pred_scores = proposals.get_field("scores").detach().cpu().numpy()
-    #     boxes = proposals.bbox.detach()
-    #     # stride = 16
-    #     boxes = (boxes / stride).int().cpu().numpy()
-    #     temp_obj_pixels = []
-    #
-    #     if pred_scores.max() < self.score_thresh:
-    #         # no high quality obj -> do nothing
-    #         return
-    #
-    #     for box, pred_score, pred_label in zip(boxes, pred_scores, pred_labels):
-    #         if pred_score >= self.score_thresh:
-    #             # 1. map pixels in box to new index on x_box [H*W, C]
-    #             # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
-    #             inds = sorted(self.box_to_inds_list(box, width))
-    #             # 2. get mem_dict
-    #
-    #             # save part obj
-    #             if len(inds) > PIXEL_NUM:
-    #                 inds = np.asarray(inds)
-    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #
-    #             pixels = x[inds]
-    #
-    #             self.update(pixels)
-    #
-    #         elif pred_score >= 0.5:
-    #             # quality [0.5, 0.9)
-    #             inds = sorted(self.box_to_inds_list(box, width))
-    #
-    #             # save part obj
-    #             if len(inds) > PIXEL_NUM:
-    #                 inds = np.asarray(inds)
-    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #
-    #             pixels = x[inds]
-    #             temp_obj_pixels.append(pixels)
-    #
-    #     # obj irr pixels
-    #     obj_irr_pixels = self.get_obj_irr_pixels(x)
-    #     # save part of irr pixels
-    #     if len(obj_irr_pixels) > PIXEL_NUM:
-    #         inds = np.arange(len(obj_irr_pixels))
-    #         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #         obj_irr_pixels = obj_irr_pixels[inds]
-    #
-    #     if len(temp_obj_pixels) > 0:
-    #         # low quality obj
-    #         obj_temp_pixels = torch.cat(temp_obj_pixels, dim=0)
-    #         obj_irr_pixels = torch.cat([obj_temp_pixels, obj_irr_pixels])
-    #     self.obj_irr_mem = obj_irr_pixels
-    #     return
-
     def get_ref_feats_from_gtbboxes_single_level_train(self, x, gt_bboxes, stride):
         """
         save pixels within detected boxes into memory
@@ -129,8 +62,8 @@ class MPN(BaseModule):
             if len(_bboxes) == 0:
                 # obj irr pixels
                 obj_irr_feats = self.get_obj_irr_pixels(_x)
-                PIXEL_NUM = 100
-                obj_irr_feats = obj_irr_feats[:PIXEL_NUM]
+                OBJ_PIXEL_NUM = 300
+                obj_irr_feats = obj_irr_feats[:OBJ_PIXEL_NUM]
                 ref_obj_irr_list.append(obj_irr_feats)
                 # memory.update(self.get_obj_irr_pixels(_x))
             # have objects
@@ -143,7 +76,7 @@ class MPN(BaseModule):
                     inds = sorted(self.box_to_inds_list(box, w))
                     inds = np.asarray(inds)
                     # save part obj
-                    PIXEL_NUM = 100
+                    PIXEL_NUM = 50
                     if len(inds) > PIXEL_NUM:
                         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
                     ref_obj_list.append(_x[inds])
@@ -245,11 +178,174 @@ class MPN(BaseModule):
             _output = self.update_with_query(_x, _query_new)
             # _x[_mask] = query_new
 
-            # remove feats in memory
-            self.memories[i].reset()
+            # [n*h*w, c] -> [n, c, h, w]
+            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2)
+            outputs.append(_output)
+
+        return tuple(outputs)
+
+    # def write_single_level(self, x, stride, bboxes):
+    #     """
+    #     save pixels within detected boxes into memory
+    #     :param stride: stride of feature map
+    #     :param x: [N, C, H, W]
+    #     :param bboxes: [N, 5]
+    #     :return
+    #     """
+    #     # no obj detected
+    #     if all(bboxes) == 0:
+    #         # do nothing
+    #         return
+    #
+    #     pred_labels = proposals.get_field("labels").detach().cpu().numpy()
+    #     pred_scores = proposals.get_field("scores").detach().cpu().numpy()
+    #     boxes = proposals.bbox.detach()
+    #     # stride = 16
+    #     boxes = (boxes / stride).int().cpu().numpy()
+    #     temp_obj_pixels = []
+    #
+    #     if pred_scores.max() < self.score_thresh:
+    #         # no high quality obj -> do nothing
+    #         return
+    #
+    #     for box, pred_score, pred_label in zip(boxes, pred_scores, pred_labels):
+    #         if pred_score >= self.score_thresh:
+    #             # 1. map pixels in box to new index on x_box [H*W, C]
+    #             # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
+    #             inds = sorted(self.box_to_inds_list(box, width))
+    #             # 2. get mem_dict
+    #
+    #             # save part obj
+    #             if len(inds) > PIXEL_NUM:
+    #                 inds = np.asarray(inds)
+    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+    #
+    #             pixels = x[inds]
+    #
+    #             self.update(pixels)
+    #
+    #         elif pred_score >= 0.5:
+    #             # quality [0.5, 0.9)
+    #             inds = sorted(self.box_to_inds_list(box, width))
+    #
+    #             # save part obj
+    #             if len(inds) > PIXEL_NUM:
+    #                 inds = np.asarray(inds)
+    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+    #
+    #             pixels = x[inds]
+    #             temp_obj_pixels.append(pixels)
+    #
+    #     # obj irr pixels
+    #     obj_irr_pixels = self.get_obj_irr_pixels(x)
+    #     # save part of irr pixels
+    #     if len(obj_irr_pixels) > PIXEL_NUM:
+    #         inds = np.arange(len(obj_irr_pixels))
+    #         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+    #         obj_irr_pixels = obj_irr_pixels[inds]
+    #
+    #     if len(temp_obj_pixels) > 0:
+    #         # low quality obj
+    #         obj_temp_pixels = torch.cat(temp_obj_pixels, dim=0)
+    #         obj_irr_pixels = torch.cat([obj_temp_pixels, obj_irr_pixels])
+    #     self.obj_irr_mem = obj_irr_pixels
+    #     return
+
+    def get_feats_inside_bboxes_single_level(self, x, bboxes, stride):
+        """
+        save pixels within detected boxes into memory
+        :param x: [N, C, H, W]
+        :param bboxes: list of ndarray N x [30, 5]
+        :param stride: stride of the current level
+        :return
+        """
+        assert len(x) == len(bboxes)
+
+        n, c, _, w = x.size()
+        feats_list = []
+        for i, _x in enumerate(x):
+            ref_obj_list = []
+
+            # [C, H, W] -> [H*W, C]
+            _x = _x.view(c, -1).permute(1, 0)
+            # get bboxes of this image
+            _bboxes = bboxes[i]     # 30 x [n, 5]
+            for cls_ind in range(len(_bboxes)):
+                _bboxes_of_cls = _bboxes[cls_ind]
+                # get feats inside high-quality bboxes
+                for box_with_score in _bboxes_of_cls:
+                    if box_with_score[-1] > 0.8:
+                        box = box_with_score[:4]
+                        box = (box / stride).astype(int).tolist()
+                        inds = sorted(self.box_to_inds_list(box, w))
+                        # inds = np.asarray(inds)
+                        # save part obj
+                        PIXEL_NUM = 300
+                        if len(inds) > PIXEL_NUM:
+                            inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+                        ref_obj_list.append(_x[inds])
+
+            # no high-quality bbox
+            if len(ref_obj_list) == 0 or len(torch.cat(ref_obj_list, dim=0)):
+                # obj irr pixels
+                obj_irr_feats = self.get_obj_irr_pixels(_x)
+                PIXEL_NUM = 50
+                obj_feats = obj_irr_feats[:PIXEL_NUM]
+            else:
+                obj_feats = torch.cat(ref_obj_list, dim=0)
+
+            # max num of feats is set to 1000
+            feats_list.append(
+                obj_feats[:1000]
+            )
+
+        return torch.cat(feats_list, dim=0)
+
+    def write_operation(self, x, bboxes):
+        """
+        Write features inside bboxes into memory
+        :param x: list of feature maps
+        :param bboxes: list of bboxes
+        :return:
+        """
+        assert len(x) == len(self.memories)     # number of levels
+        assert len(x[0]) == len(bboxes)         # number of frames
+
+        # write for every level
+        for lvl in range(len(x)):
+            _x = x[lvl]
+            _device = _x.device
+            _feats = self.get_feats_inside_bboxes_single_level(
+                _x.cpu(), bboxes, self.strides[lvl]
+            )
+            # update memory
+            self.memories[lvl].update(_feats.to(_device))
+        return
+
+    def forward_test(self, x):
+        assert len(x) == len(self.memories)
+
+        # do aggregation
+        outputs = []
+        for i, _x in enumerate(x):
+            # [1, C, H, W]
+            n, c, h, w = _x.size()
+            # [n, c, h, w] -> [n*h*w, c]
+            _x = _x.permute(0, 2, 3, 1).view(-1, c)
+
+            _query = self.filter_with_mask(_x)
+            # query = _x[_mask]
+            _key = self.memories[i].sample()
+            _query_new = self.memories[i](_query, _key)
+            _output = self.update_with_query(_x, _query_new)
+            # _x[_mask] = query_new
 
             # [n*h*w, c] -> [n, c, h, w]
             _output = _output.view(n, h, w, c).permute(0, 3, 1, 2)
             outputs.append(_output)
 
         return tuple(outputs)
+
+    def reset(self):
+        for lvl in range(len(self.memories)):
+            self.memories[lvl].reset()
