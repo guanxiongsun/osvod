@@ -65,7 +65,7 @@ model = dict(
     memory=dict(
         type='MPN',
         in_channels=[256, 512, 1024, 2048],
-        scales=[4, 8, 16, 32],
+        strides=[4, 8, 16, 32],
         before_fpn=True,
     ),
 )

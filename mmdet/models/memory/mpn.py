@@ -19,13 +19,13 @@ class MPN(BaseModule):
     """
 
     def __init__(self, in_channels,
-                 scales,
+                 strides,
                  before_fpn
                  ):
         super().__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
-        self.scales = scales
+        self.strides = strides
         self.before_fpn = before_fpn
 
         # add memory modules for every level
@@ -101,19 +101,19 @@ class MPN(BaseModule):
     #     self.obj_irr_mem = obj_irr_pixels
     #     return
 
-    def write_single_level_train(self, x, gt_bboxes, level):
+    def get_ref_feats_from_gtbboxes_single_level_train(self, x, gt_bboxes, stride):
         """
         save pixels within detected boxes into memory
         :param x: [N, C, H, W]
         :param gt_bboxes: [n, 5(ind, x, y, x, y)], e.g.,
             tensor([[  0.0000, 329.8406, 247.6415, 591.7313, 428.7736],
                     [  1.0000, 305.7750, 247.6415, 580.4062, 431.6038]], device='cuda:0')
-        :param level: the current level
+        :param stride: stride of the current level
         :return
         """
         # assert len(x) == len(gt_bboxes)
-        stride = self.scales[level]
-        memory = self.memories[level]
+        # stride = self.scales[level]
+        # memory = self.memories[level]
 
         n, c, _, w = x.size()
         ref_obj_irr_list = []
@@ -124,41 +124,49 @@ class MPN(BaseModule):
 
             # get bboxes of this image
             ind = gt_bboxes[:, 0] == i
-            _bboxes = gt_bboxes[ind][:, 1:]     # [n0, 4]
+            _bboxes = gt_bboxes[ind]     # [n0, 4]
             # no object
             if len(_bboxes) == 0:
                 # obj irr pixels
-                ref_obj_irr_list.append(self.get_obj_irr_pixels(_x))
-                # memory.update(self.get_obj_irr_pixels(_x))
-                return
-
-            # have objects
-            boxes = torch.div(_bboxes, stride).int()
-
-            for box in boxes:
-                # 1. map pixels in box to new index on x_box [H*W, C]
-                # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
-                inds = sorted(self.box_to_inds_list(box, w))
-
-                inds = np.asarray(inds)
-
-                # save part obj
+                obj_irr_feats = self.get_obj_irr_pixels(_x)
                 PIXEL_NUM = 100
-                if len(inds) > PIXEL_NUM:
-                    inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-
-                ref_obj_list.append(_x[inds])
-                # memory.update(_x[inds])
-
+                obj_irr_feats = obj_irr_feats[:PIXEL_NUM]
+                ref_obj_irr_list.append(obj_irr_feats)
+                # memory.update(self.get_obj_irr_pixels(_x))
+            # have objects
+            else:
+                _bboxes = _bboxes[:, 1:]
+                boxes = torch.div(_bboxes, stride).int()
+                for box in boxes:
+                    # 1. map pixels in box to new index on x_box [H*W, C]
+                    # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
+                    inds = sorted(self.box_to_inds_list(box, w))
+                    inds = np.asarray(inds)
+                    # save part obj
+                    PIXEL_NUM = 100
+                    if len(inds) > PIXEL_NUM:
+                        inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+                    ref_obj_list.append(_x[inds])
+                    # memory.update(_x[inds])
         ref_all = ref_obj_list + ref_obj_irr_list
+        ref_all = torch.cat(ref_all, dim=0)
 
-        return torch.cat(ref_all, dim=0)
+        # objects are too small
+        if len(ref_all) == 0:
+            # obj irr pixels
+            obj_irr_feats = self.get_obj_irr_pixels(_x)
+            PIXEL_NUM = 10
+            obj_irr_feats = obj_irr_feats[:PIXEL_NUM]
+            return obj_irr_feats
+
+        # max num of feats is set to 1000
+        return ref_all[:1000]
 
     @staticmethod
     def box_to_inds_list(box, w):
         inds = []
-        for x_i in range(box[0], box[2] + 1):
-            for y_j in range(box[1], box[3] + 1):
+        for x_i in range(box[0], box[2]):
+            for y_j in range(box[1], box[3]):
                 inds.append(int(x_i + y_j * w))
         return inds
 
@@ -179,12 +187,13 @@ class MPN(BaseModule):
     @torch.no_grad()
     def prepare_memory_train(self, ref_x, ref_gt_bboxes):
         ref_feats_all = []
-        for i in range(len(self.memories)):
-            _ref_x = ref_x[i]
-            ref_feats_all.append(
-                self.write_single_level_train(
-                    _ref_x, ref_gt_bboxes[0].clone(), i)
+        for lvl in range(len(ref_x)):
+            _ref_x = ref_x[lvl]
+            _device = _ref_x.device
+            _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
+                _ref_x.cpu().clone(), ref_gt_bboxes[0].cpu().clone(), self.strides[lvl]
             )
+            ref_feats_all.append(_ref_feats.to(_device))
         return ref_feats_all
 
     @staticmethod
@@ -215,6 +224,8 @@ class MPN(BaseModule):
             ref_x.append(inputs[i][1:])
 
         # save ref feats to all levels of memory
+        if len(ref_gt_bboxes[0]) < 1:
+            print(len(ref_gt_bboxes))
         ref_feats_all = self.prepare_memory_train(ref_x, ref_gt_bboxes)
 
         # do aggregation
@@ -228,6 +239,8 @@ class MPN(BaseModule):
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
             _key = ref_feats_all[i]
+            if len(_key) == 0:
+                print(_key.shape)
             _query_new = self.memories[i](_query, _key)
             _output = self.update_with_query(_x, _query_new)
             # _x[_mask] = query_new
