@@ -77,5 +77,5 @@ class MemoryBank(BaseModule):
             return self.enhance(x)
         # training
         else:
-            self.init_memory(x_support)
-            return self.enhance(x)
+            x = self.aggregator(x, x_support)
+            return x

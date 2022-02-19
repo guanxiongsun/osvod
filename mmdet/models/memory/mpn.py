@@ -116,6 +116,8 @@ class MPN(BaseModule):
         memory = self.memories[level]
 
         n, c, _, w = x.size()
+        ref_obj_irr_list = []
+        ref_obj_list = []
         for i, _x in enumerate(x):
             # [C, H, W] -> [H*W, C]
             _x = _x.view(c, -1).permute(1, 0)
@@ -126,7 +128,8 @@ class MPN(BaseModule):
             # no object
             if len(_bboxes) == 0:
                 # obj irr pixels
-                memory.update(self.get_obj_irr_pixels(_x))
+                ref_obj_irr_list.append(self.get_obj_irr_pixels(_x))
+                # memory.update(self.get_obj_irr_pixels(_x))
                 return
 
             # have objects
@@ -137,14 +140,19 @@ class MPN(BaseModule):
                 # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
                 inds = sorted(self.box_to_inds_list(box, w))
 
-                PIXEL_NUM=1000
+                inds = np.asarray(inds)
+
                 # save part obj
+                PIXEL_NUM = 100
                 if len(inds) > PIXEL_NUM:
-                    inds = np.asarray(inds)
                     inds = np.random.choice(inds, PIXEL_NUM, replace=False)
 
-                memory.update(_x[inds])
-        return
+                ref_obj_list.append(_x[inds])
+                # memory.update(_x[inds])
+
+        ref_all = ref_obj_list + ref_obj_irr_list
+
+        return torch.cat(ref_all, dim=0)
 
     @staticmethod
     def box_to_inds_list(box, w):
@@ -170,9 +178,14 @@ class MPN(BaseModule):
 
     @torch.no_grad()
     def prepare_memory_train(self, ref_x, ref_gt_bboxes):
+        ref_feats_all = []
         for i in range(len(self.memories)):
             _ref_x = ref_x[i]
-            self.write_single_level_train(_ref_x, ref_gt_bboxes[0].clone(), i)
+            ref_feats_all.append(
+                self.write_single_level_train(
+                    _ref_x, ref_gt_bboxes[0].clone(), i)
+            )
+        return ref_feats_all
 
     @staticmethod
     def filter_with_mask(query, mask=None):
@@ -202,7 +215,7 @@ class MPN(BaseModule):
             ref_x.append(inputs[i][1:])
 
         # save ref feats to all levels of memory
-        self.prepare_memory_train(ref_x, ref_gt_bboxes)
+        ref_feats_all = self.prepare_memory_train(ref_x, ref_gt_bboxes)
 
         # do aggregation
         outputs = []
@@ -214,9 +227,13 @@ class MPN(BaseModule):
 
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
-            _query_new = self.memories[i](_query)
+            _key = ref_feats_all[i]
+            _query_new = self.memories[i](_query, _key)
             _output = self.update_with_query(_x, _query_new)
             # _x[_mask] = query_new
+
+            # remove feats in memory
+            self.memories[i].reset()
 
             # [n*h*w, c] -> [n, c, h, w]
             _output = _output.view(n, h, w, c).permute(0, 3, 1, 2)
