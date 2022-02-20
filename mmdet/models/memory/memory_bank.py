@@ -74,7 +74,7 @@ class MemoryBank(BaseModule):
     def forward(self, x, x_support=None):
         # inference
         if x_support is None:
-            return self.enhance(x)
+            raise NotImplementedError
         # training
         else:
             x = self.aggregator(x, x_support)

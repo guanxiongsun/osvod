@@ -133,26 +133,20 @@ class FCOSAtt(BaseVideoDetector):
 
         # memory before or after fpn
         if self.memory.before_fpn:
-            all_x = self.memory.forward_train(all_x,
+            key_x = self.memory.forward_train(all_x,
                                               gt_bboxes=gt_bboxes,
                                               ref_gt_bboxes=ref_gt_bboxes)
             if self.detector.with_neck:
-                all_x = self.detector.neck(all_x)
+                key_x = self.detector.neck(key_x)
 
         else:
             if self.detector.with_neck:
                 all_x = self.detector.neck(all_x)
-            all_x = self.memory.forward_train(all_x,
+            key_x = self.memory.forward_train(all_x,
                                               gt_bboxes=gt_bboxes,
                                               ref_gt_bboxes=ref_gt_bboxes)
 
-        # x = []
-        # ref_x = []
-        # for i in range(len(all_x)):
-        #     x.append(all_x[i][[0]])
-        #     ref_x.append(all_x[i][1:])
-
-        losses = self.detector.bbox_head.forward_train(all_x, img_metas, gt_bboxes,
+        losses = self.detector.bbox_head.forward_train(key_x, img_metas, gt_bboxes,
                                                        gt_labels, gt_bboxes_ignore)
 
         return losses

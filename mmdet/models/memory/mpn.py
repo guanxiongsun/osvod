@@ -44,10 +44,6 @@ class MPN(BaseModule):
         :param stride: stride of the current level
         :return
         """
-        # assert len(x) == len(gt_bboxes)
-        # stride = self.scales[level]
-        # memory = self.memories[level]
-
         n, c, _, w = x.size()
         ref_obj_irr_list = []
         ref_obj_list = []
@@ -152,9 +148,9 @@ class MPN(BaseModule):
 
         x = []
         ref_x = []
-        for i in range(len(inputs)):
-            x.append(inputs[i][[0]])
-            ref_x.append(inputs[i][1:])
+        for lvl in range(len(inputs)):
+            x.append(inputs[lvl][[0]])
+            ref_x.append(inputs[lvl][1:])
 
         # save ref feats to all levels of memory
         if len(ref_gt_bboxes[0]) < 1:
@@ -163,7 +159,7 @@ class MPN(BaseModule):
 
         # do aggregation
         outputs = []
-        for i, _x in enumerate(x):
+        for lvl, _x in enumerate(x):
             # [1, C, H, W]
             n, c, h, w = _x.size()
             # [n, c, h, w] -> [n*h*w, c]
@@ -171,10 +167,10 @@ class MPN(BaseModule):
 
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
-            _key = ref_feats_all[i]
+            _key = ref_feats_all[lvl]
             if len(_key) == 0:
                 print(_key.shape)
-            _query_new = self.memories[i](_query, _key)
+            _query_new = self.memories[lvl](_query, _key)
             _output = self.update_with_query(_x, _query_new)
             # _x[_mask] = query_new
 
@@ -183,73 +179,6 @@ class MPN(BaseModule):
             outputs.append(_output)
 
         return tuple(outputs)
-
-    # def write_single_level(self, x, stride, bboxes):
-    #     """
-    #     save pixels within detected boxes into memory
-    #     :param stride: stride of feature map
-    #     :param x: [N, C, H, W]
-    #     :param bboxes: [N, 5]
-    #     :return
-    #     """
-    #     # no obj detected
-    #     if all(bboxes) == 0:
-    #         # do nothing
-    #         return
-    #
-    #     pred_labels = proposals.get_field("labels").detach().cpu().numpy()
-    #     pred_scores = proposals.get_field("scores").detach().cpu().numpy()
-    #     boxes = proposals.bbox.detach()
-    #     # stride = 16
-    #     boxes = (boxes / stride).int().cpu().numpy()
-    #     temp_obj_pixels = []
-    #
-    #     if pred_scores.max() < self.score_thresh:
-    #         # no high quality obj -> do nothing
-    #         return
-    #
-    #     for box, pred_score, pred_label in zip(boxes, pred_scores, pred_labels):
-    #         if pred_score >= self.score_thresh:
-    #             # 1. map pixels in box to new index on x_box [H*W, C]
-    #             # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
-    #             inds = sorted(self.box_to_inds_list(box, width))
-    #             # 2. get mem_dict
-    #
-    #             # save part obj
-    #             if len(inds) > PIXEL_NUM:
-    #                 inds = np.asarray(inds)
-    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #
-    #             pixels = x[inds]
-    #
-    #             self.update(pixels)
-    #
-    #         elif pred_score >= 0.5:
-    #             # quality [0.5, 0.9)
-    #             inds = sorted(self.box_to_inds_list(box, width))
-    #
-    #             # save part obj
-    #             if len(inds) > PIXEL_NUM:
-    #                 inds = np.asarray(inds)
-    #                 inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #
-    #             pixels = x[inds]
-    #             temp_obj_pixels.append(pixels)
-    #
-    #     # obj irr pixels
-    #     obj_irr_pixels = self.get_obj_irr_pixels(x)
-    #     # save part of irr pixels
-    #     if len(obj_irr_pixels) > PIXEL_NUM:
-    #         inds = np.arange(len(obj_irr_pixels))
-    #         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-    #         obj_irr_pixels = obj_irr_pixels[inds]
-    #
-    #     if len(temp_obj_pixels) > 0:
-    #         # low quality obj
-    #         obj_temp_pixels = torch.cat(temp_obj_pixels, dim=0)
-    #         obj_irr_pixels = torch.cat([obj_temp_pixels, obj_irr_pixels])
-    #     self.obj_irr_mem = obj_irr_pixels
-    #     return
 
     def get_feats_inside_bboxes_single_level(self, x, bboxes, stride):
         """
