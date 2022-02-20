@@ -180,7 +180,7 @@ class FCOSAtt(BaseVideoDetector):
                     self.memory.write_operation(ref_x, ref_bboxes)
 
             # no feats in memory
-            if len(self.memory.memories[0]) == 0:
+            if len(self.memory.memories[self.memory.start_level]) == 0:
                 # do detection
                 ref_bboxes = self.detector.simple_test(img, img_metas)
 
