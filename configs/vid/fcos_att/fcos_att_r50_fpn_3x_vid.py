@@ -67,6 +67,7 @@ model = dict(
         in_channels=[256, 512, 1024, 2048],
         strides=[4, 8, 16, 32],
         before_fpn=True,
+        start_level=1,
     ),
 )
 

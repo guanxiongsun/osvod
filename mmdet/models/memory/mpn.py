@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from mmcv.cnn import ConvModule
+# from mmcv.cnn import ConvModule
 from mmcv.runner import BaseModule
 from .memory_bank import MemoryBank
 
@@ -20,18 +20,23 @@ class MPN(BaseModule):
 
     def __init__(self, in_channels,
                  strides,
-                 before_fpn
+                 before_fpn,
+                 start_level,
                  ):
         super().__init__()
         assert isinstance(in_channels, list)
         self.in_channels = in_channels
         self.strides = strides
         self.before_fpn = before_fpn
+        self.start_level = start_level
 
         # add memory modules for every level
         self.memories = nn.ModuleList()
-        for _in_channels in self.in_channels:
-            _memory = MemoryBank(_in_channels)
+        for lvl, _in_channels in enumerate(self.in_channels):
+            if lvl < self.start_level:
+                _memory = nn.Identity()
+            else:
+                _memory = MemoryBank(_in_channels)
             self.memories.append(_memory)
 
     def get_ref_feats_from_gtbboxes_single_level_train(self, x, gt_bboxes, stride):
@@ -117,6 +122,10 @@ class MPN(BaseModule):
     def prepare_memory_train(self, ref_x, ref_gt_bboxes):
         ref_feats_all = []
         for lvl in range(len(ref_x)):
+            if lvl < self.start_level:
+                ref_feats_all.append(None)
+                continue
+
             _ref_x = ref_x[lvl]
             _device = _ref_x.device
             _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
@@ -151,9 +160,14 @@ class MPN(BaseModule):
             print(len(ref_gt_bboxes))
         ref_feats_all = self.prepare_memory_train(ref_x, ref_gt_bboxes)
 
-        # do aggregation
         outputs = []
         for lvl, _x in enumerate(x):
+            if lvl < self.start_level:
+                # do noting
+                outputs.append(_x)
+                continue
+
+            # do aggregation
             # [1, C, H, W]
             n, c, h, w = _x.size()
             # [n, c, h, w] -> [n*h*w, c]
