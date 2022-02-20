@@ -141,16 +141,10 @@ class MPN(BaseModule):
             return _input
 
     # all_x = self.mpn.forward_train(all_x, gt_bboxes, ref_gt_bboxes)
-    def forward_train(self, inputs,
+    def forward_train(self, x, ref_x,
                       gt_bboxes=None,
                       ref_gt_bboxes=None):
-        assert len(inputs) == len(self.in_channels)
-
-        x = []
-        ref_x = []
-        for lvl in range(len(inputs)):
-            x.append(inputs[lvl][[0]])
-            ref_x.append(inputs[lvl][1:])
+        assert len(x) == len(self.memories)
 
         # save ref feats to all levels of memory
         if len(ref_gt_bboxes[0]) < 1:

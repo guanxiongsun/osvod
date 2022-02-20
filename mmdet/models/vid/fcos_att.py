@@ -126,23 +126,23 @@ class FCOSAtt(BaseVideoDetector):
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
-        all_imgs = torch.cat((img, ref_img[0]), dim=0)
-
-        # all_x = self.detector.extract_feat(all_imgs)
-        all_x = self.detector.backbone(all_imgs)
+        key_x = self.detector.backbone(img)
+        with torch.no_grad():
+            ref_x = self.detector.backbone(ref_img[0])
 
         # memory before or after fpn
         if self.memory.before_fpn:
-            key_x = self.memory.forward_train(all_x,
+            key_x = self.memory.forward_train(key_x, ref_x,
                                               gt_bboxes=gt_bboxes,
                                               ref_gt_bboxes=ref_gt_bboxes)
             if self.detector.with_neck:
                 key_x = self.detector.neck(key_x)
-
         else:
             if self.detector.with_neck:
-                all_x = self.detector.neck(all_x)
-            key_x = self.memory.forward_train(all_x,
+                key_x = self.detector.neck(key_x)
+                with torch.no_grad():
+                    ref_x = self.detector.neck(ref_x)
+            key_x = self.memory.forward_train(key_x, ref_x,
                                               gt_bboxes=gt_bboxes,
                                               ref_gt_bboxes=ref_gt_bboxes)
 
