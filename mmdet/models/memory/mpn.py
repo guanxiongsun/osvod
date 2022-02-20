@@ -249,8 +249,9 @@ class MPN(BaseModule):
         assert len(x[0]) == len(bboxes)         # number of frames
 
         # write for every level
-        for lvl in range(len(x)):
-            _x = x[lvl]
+        for lvl, _x in enumerate(x):
+            if lvl < self.start_level:
+                continue
             _device = _x.device
             _feats = self.get_feats_inside_bboxes_single_level(
                 _x.cpu(), bboxes, self.strides[lvl]
@@ -264,7 +265,10 @@ class MPN(BaseModule):
 
         # do aggregation
         outputs = []
-        for i, _x in enumerate(x):
+        for lvl, _x in enumerate(x):
+            if lvl < self.start_level:
+                outputs.append(_x)
+                continue
             # [1, C, H, W]
             n, c, h, w = _x.size()
             # [n, c, h, w] -> [n*h*w, c]
@@ -272,8 +276,8 @@ class MPN(BaseModule):
 
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
-            _key = self.memories[i].sample()
-            _query_new = self.memories[i](_query, _key)
+            _key = self.memories[lvl].sample()
+            _query_new = self.memories[lvl](_query, _key)
             _output = self.update_with_query(_x, _query_new)
             # _x[_mask] = query_new
 
@@ -285,4 +289,6 @@ class MPN(BaseModule):
 
     def reset(self):
         for lvl in range(len(self.memories)):
+            if lvl < self.start_level:
+                continue
             self.memories[lvl].reset()
