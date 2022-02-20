@@ -49,7 +49,7 @@ class MPN(BaseModule):
         ref_obj_list = []
         for i, _x in enumerate(x):
             # [C, H, W] -> [H*W, C]
-            _x = _x.view(c, -1).permute(1, 0)
+            _x = _x.view(c, -1).permute(1, 0).contiguous()
 
             # get bboxes of this image
             ind = gt_bboxes[:, 0] == i
@@ -163,7 +163,7 @@ class MPN(BaseModule):
             # [1, C, H, W]
             n, c, h, w = _x.size()
             # [n, c, h, w] -> [n*h*w, c]
-            _x = _x.permute(0, 2, 3, 1).view(-1, c)
+            _x = _x.permute(0, 2, 3, 1).view(-1, c).contiguous()
 
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
@@ -175,7 +175,7 @@ class MPN(BaseModule):
             # _x[_mask] = query_new
 
             # [n*h*w, c] -> [n, c, h, w]
-            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2)
+            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2).contiguous()
             outputs.append(_output)
 
         return tuple(outputs)
@@ -196,7 +196,7 @@ class MPN(BaseModule):
             ref_obj_list = []
 
             # [C, H, W] -> [H*W, C]
-            _x = _x.view(c, -1).permute(1, 0)
+            _x = _x.view(c, -1).permute(1, 0).contiguous()
             # get bboxes of this image
             _bboxes = bboxes[i]     # 30 x [n, 5]
             for cls_ind in range(len(_bboxes)):
@@ -260,7 +260,7 @@ class MPN(BaseModule):
             # [1, C, H, W]
             n, c, h, w = _x.size()
             # [n, c, h, w] -> [n*h*w, c]
-            _x = _x.permute(0, 2, 3, 1).view(-1, c)
+            _x = _x.permute(0, 2, 3, 1).view(-1, c).contiguous()
 
             _query = self.filter_with_mask(_x)
             # query = _x[_mask]
@@ -270,7 +270,7 @@ class MPN(BaseModule):
             # _x[_mask] = query_new
 
             # [n*h*w, c] -> [n, c, h, w]
-            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2)
+            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2).contiguous()
             outputs.append(_output)
 
         return tuple(outputs)
