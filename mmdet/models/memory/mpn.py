@@ -80,8 +80,8 @@ class MPN(BaseModule):
                     PIXEL_NUM = 50
                     if len(inds) > PIXEL_NUM:
                         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+                    inds = np.clip(inds, 0, len(_x))
                     ref_obj_list.append(_x[inds])
-                    # memory.update(_x[inds])
         ref_all = ref_obj_list + ref_obj_irr_list
         ref_all = torch.cat(ref_all, dim=0)
 
@@ -99,8 +99,8 @@ class MPN(BaseModule):
     @staticmethod
     def box_to_inds_list(box, w):
         inds = []
-        for x_i in range(box[0], box[2]):
-            for y_j in range(box[1], box[3]):
+        for x_i in range(box[0], box[2] + 1):
+            for y_j in range(box[1], box[3] + 1):
                 inds.append(int(x_i + y_j * w))
         return inds
 
@@ -215,11 +215,12 @@ class MPN(BaseModule):
                         box = box_with_score[:4]
                         box = (box / stride).astype(int).tolist()
                         inds = sorted(self.box_to_inds_list(box, w))
-                        # inds = np.asarray(inds)
+                        inds = np.asarray(inds)
                         # save part obj
                         PIXEL_NUM = 300
                         if len(inds) > PIXEL_NUM:
                             inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+                        inds = np.clip(inds, 0, len(_x))
                         ref_obj_list.append(_x[inds])
 
             # no high-quality bbox
