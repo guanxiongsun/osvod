@@ -118,6 +118,22 @@ class MPN(BaseModule):
         pixels = x[keep_irrelevant]
         return pixels
 
+    @staticmethod
+    def get_obj_irr_pixels_topk(x, k=50):
+        """
+        get top k object irrelevant features
+        :param x: [n, c]
+        :param k: number of pixels
+        :return: [m, c]
+        """
+        n, c = x.size()
+        l2_norm = x.pow(2).sum(dim=1).sqrt() / np.sqrt(c)
+        # l2_norm = F.softmax(l2_norm, dim=0)
+        _, inds = l2_norm.topk(k)
+        # keep_irrelevant = (F.softmax(l2_norm, dim=0) > scale / n)
+        pixels = x[inds]
+        return pixels
+
     @torch.no_grad()
     def prepare_memory_train(self, ref_x, ref_gt_bboxes):
         ref_feats_all = []
@@ -224,13 +240,16 @@ class MPN(BaseModule):
                         ref_obj_list.append(_x[inds])
 
             # no high-quality bbox
-            if len(ref_obj_list) == 0 or len(torch.cat(ref_obj_list, dim=0)):
+            IRR_PIXEL_NUM = 50
+            if len(ref_obj_list) == 0:
                 # obj irr pixels
-                obj_irr_feats = self.get_obj_irr_pixels(_x)
-                PIXEL_NUM = 50
-                obj_feats = obj_irr_feats[:PIXEL_NUM]
+                obj_feats = self.get_obj_irr_pixels(_x)[:IRR_PIXEL_NUM]
             else:
                 obj_feats = torch.cat(ref_obj_list, dim=0)
+
+            # objects too small
+            if len(obj_feats) == 0:
+                obj_feats = self.get_obj_irr_pixels_topk(_x, IRR_PIXEL_NUM)
 
             # max num of feats is set to 1000
             feats_list.append(
