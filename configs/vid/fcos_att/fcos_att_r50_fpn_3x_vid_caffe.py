@@ -74,8 +74,7 @@ model = dict(
 dataset_type = "ImagenetVIDDataset"
 data_root = "data/ILSVRC/"
 img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True
-)
+    mean=[102.9801, 115.9465, 122.7717], std=[1.0, 1.0, 1.0], to_rgb=False)
 train_pipeline = [
     dict(type="LoadMultiImagesFromFile"),
     dict(type="SeqLoadAnnotations", with_bbox=True, with_track=True),
