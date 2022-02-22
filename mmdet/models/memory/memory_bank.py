@@ -66,10 +66,10 @@ class MemoryBank(BaseModule):
             return 0
         return len(self.feat)
 
-    def enhance(self, x):
-        ref_x = self.sample()
-        x = self.aggregator(x, ref_x)
-        return x
+    # def enhance(self, x):
+    #     ref_x = self.sample()
+    #     x = self.aggregator(x, ref_x)
+    #     return x
 
     def forward(self, x, x_support=None):
         # inference
@@ -77,5 +77,5 @@ class MemoryBank(BaseModule):
             raise NotImplementedError
         # training
         else:
-            x = self.aggregator(x, x_support)
+            x = x + self.aggregator(x, x_support)
             return x
