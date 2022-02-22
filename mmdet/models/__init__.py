@@ -5,7 +5,9 @@ from .builder import (BACKBONES, DETECTORS, HEADS, LOSSES, NECKS,
                       build_detector, build_head, build_loss, build_neck,
                       build_roi_extractor, build_shared_head,
                       # from mmtrack
-                      build_model, build_aggregator, AGGREGATORS
+                      build_model, build_aggregator, AGGREGATORS,
+                      # for memory
+                      build_memory,
                       )
 from .dense_heads import *  # noqa: F401,F403
 from .detectors import *  # noqa: F401,F403
@@ -16,13 +18,16 @@ from .roi_heads import *  # noqa: F401,F403
 from .seg_heads import *  # noqa: F401,F403
 
 # add video models
-from .vid import SELSA
+from .vid import SELSA, FCOSAtt
 from .aggregators import SelsaAggregator
+from .memory import MPN
 
 __all__ = [
     'BACKBONES', 'NECKS', 'ROI_EXTRACTORS', 'SHARED_HEADS', 'HEADS', 'LOSSES',
     'DETECTORS', 'build_backbone', 'build_neck', 'build_roi_extractor',
     'build_shared_head', 'build_head', 'build_loss', 'build_detector',
     # add wrapper for video models
-    'build_model', 'SELSA', 'AGGREGATORS', 'build_aggregator'
+    'build_model', 'SELSA', 'AGGREGATORS', 'build_aggregator',
+    # build memory
+    'build_memory', 'FCOSAtt', 'MPN'
 ]
