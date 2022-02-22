@@ -80,7 +80,7 @@ class MPN(BaseModule):
                     PIXEL_NUM = 50
                     if len(inds) > PIXEL_NUM:
                         inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-                    inds = np.clip(inds, 0, len(_x))
+                    inds = np.clip(inds, 0, len(_x)-1)
                     ref_obj_list.append(_x[inds])
         ref_all = ref_obj_list + ref_obj_irr_list
         ref_all = torch.cat(ref_all, dim=0)
@@ -236,7 +236,7 @@ class MPN(BaseModule):
                         PIXEL_NUM = 300
                         if len(inds) > PIXEL_NUM:
                             inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-                        inds = np.clip(inds, 0, len(_x))
+                        inds = np.clip(inds, 0, len(_x)-1)
                         ref_obj_list.append(_x[inds])
 
             # no high-quality bbox
