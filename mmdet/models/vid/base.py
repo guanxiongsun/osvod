@@ -326,31 +326,14 @@ class BaseVideoDetector(BaseModule, metaclass=ABCMeta):
         # TODO: make it support tracking
         img = mmcv.imread(img)
         img = img.copy()
-        assert isinstance(result, dict)
-        bbox_results = result.get('det_bboxes', None)
-        mask_results = result.get('det_masks', None)
-        if isinstance(mask_results, tuple):
-            mask_results = mask_results[0]  # ms rcnn
+        # assert isinstance(result, dict)
+        bbox_results = result
         bboxes = np.vstack(bbox_results)
         labels = [
             np.full(bbox.shape[0], i, dtype=np.int32)
             for i, bbox in enumerate(bbox_results)
         ]
         labels = np.concatenate(labels)
-        # draw segmentation masks
-        if mask_results is not None and len(labels) > 0:  # non empty
-            masks = mmcv.concat_list(mask_results)
-            inds = np.where(bboxes[:, -1] > score_thr)[0]
-            np.random.seed(42)
-            color_masks = [
-                np.random.randint(0, 256, (1, 3), dtype=np.uint8)
-                for _ in range(max(labels) + 1)
-            ]
-            for i in inds:
-                i = int(i)
-                color_mask = color_masks[labels[i]]
-                mask = masks[i].astype(bool)
-                img[mask] = img[mask] * 0.5 + color_mask * 0.5
         # if out_file specified, do not show image in window
         if out_file is not None:
             show = False
