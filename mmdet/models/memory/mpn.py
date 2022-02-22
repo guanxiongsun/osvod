@@ -50,7 +50,6 @@ class MPN(BaseModule):
         :return
         """
         n, c, _, w = x.size()
-        ref_obj_irr_list = []
         ref_obj_list = []
         for i, _x in enumerate(x):
             # [C, H, W] -> [H*W, C]
@@ -61,12 +60,7 @@ class MPN(BaseModule):
             _bboxes = gt_bboxes[ind]     # [n0, 4]
             # no object
             if len(_bboxes) == 0:
-                # obj irr pixels
-                obj_irr_feats = self.get_obj_irr_pixels(_x)
-                OBJ_PIXEL_NUM = 300
-                obj_irr_feats = obj_irr_feats[:OBJ_PIXEL_NUM]
-                ref_obj_irr_list.append(obj_irr_feats)
-                # memory.update(self.get_obj_irr_pixels(_x))
+                continue
             # have objects
             else:
                 _bboxes = _bboxes[:, 1:]
@@ -76,27 +70,31 @@ class MPN(BaseModule):
                     # box [x1, y1, x2, y2] -> [ind_1, ind_2, ind_3, ... ]
                     inds = sorted(self.box_to_inds_list(box, w))
                     inds = np.asarray(inds)
+                    # obj too small
+                    if len(inds) == 0:
+                        obj_irr_inds = self.get_obj_irr_inds_topk(_x, 10)
+                        ref_obj_list.append(_x[obj_irr_inds])
                     # save part obj
-                    PIXEL_NUM = 50
-                    if len(inds) > PIXEL_NUM:
-                        inds = np.random.choice(inds, PIXEL_NUM, replace=False)
-                    inds = np.clip(inds, 0, len(_x)-1)
-                    ref_obj_list.append(_x[inds])
-        ref_all = ref_obj_list + ref_obj_irr_list
-        ref_all = torch.cat(ref_all, dim=0)
+                    else:
+                        PIXEL_NUM = 300
+                        if len(inds) > PIXEL_NUM:
+                            inds = np.random.choice(inds, PIXEL_NUM, replace=False)
+                        inds = np.clip(inds, 0, len(_x)-1)
+                        ref_obj_list.append(_x[inds])
 
-        # objects are too small
-        if len(ref_all) == 0:
+        # no obj
+        if len(ref_obj_list) == 0:
             # obj irr pixels
-            obj_irr_feats = self.get_obj_irr_pixels(_x)
-            PIXEL_NUM = 10
-            obj_irr_feats = obj_irr_feats[:PIXEL_NUM]
-            return obj_irr_feats
+            IRR_PIXEL_NUM = 50
+            obj_irr_inds = self.get_obj_irr_inds_topk(_x, IRR_PIXEL_NUM)
+            return _x[obj_irr_inds]
 
         # max num of feats is set to 1000
+        ref_all = torch.cat(ref_obj_list, dim=0)
         return ref_all[:1000]
 
     @staticmethod
+    @torch.no_grad()
     def box_to_inds_list(box, w):
         inds = []
         for x_i in range(box[0], box[2] + 1):
@@ -104,22 +102,23 @@ class MPN(BaseModule):
                 inds.append(int(x_i + y_j * w))
         return inds
 
-    @staticmethod
-    def get_obj_irr_pixels(x, scale=1.0):
-        """
-        get object irrelevant features
-        :param x: [n, c]
-        :param scale: factor to control threshold
-        :return: [m, c]
-        """
-        n, c = x.size()
-        l2_norm = x.pow(2).sum(dim=1).sqrt() / np.sqrt(c)
-        keep_irrelevant = (F.softmax(l2_norm, dim=0) > scale / n)
-        pixels = x[keep_irrelevant]
-        return pixels
+    # @staticmethod
+    # @torch.no_grad()
+    # def get_obj_irr_inds(x, scale=1.0):
+    #     """
+    #     get object irrelevant features
+    #     :param x: [n, c]
+    #     :param scale: factor to control threshold
+    #     :return: [m, c]
+    #     """
+    #     n, c = x.size()
+    #     l2_norm = x.pow(2).sum(dim=1).sqrt() / np.sqrt(c)
+    #     inds = (F.softmax(l2_norm, dim=0) > scale / n)
+    #     return inds
 
     @staticmethod
-    def get_obj_irr_pixels_topk(x, k=50):
+    @torch.no_grad()
+    def get_obj_irr_inds_topk(x, k=50):
         """
         get top k object irrelevant features
         :param x: [n, c]
@@ -127,14 +126,11 @@ class MPN(BaseModule):
         :return: [m, c]
         """
         n, c = x.size()
+        k = min(n, k)
         l2_norm = x.pow(2).sum(dim=1).sqrt() / np.sqrt(c)
-        # l2_norm = F.softmax(l2_norm, dim=0)
         _, inds = l2_norm.topk(k)
-        # keep_irrelevant = (F.softmax(l2_norm, dim=0) > scale / n)
-        pixels = x[inds]
-        return pixels
+        return inds
 
-    @torch.no_grad()
     def prepare_memory_train(self, ref_x, ref_gt_bboxes):
         ref_feats_all = []
         for lvl in range(len(ref_x)):
@@ -143,12 +139,11 @@ class MPN(BaseModule):
                 continue
 
             _ref_x = ref_x[lvl]
-            _device = _ref_x.device
             _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
-                _ref_x.cpu().clone(), ref_gt_bboxes[0].cpu().clone(), self.strides[lvl]
+                _ref_x.clone(), ref_gt_bboxes[0].cpu().clone(), self.strides[lvl]
             )
-            ref_feats_all.append(_ref_feats.to(_device))
-        return ref_feats_all
+            ref_feats_all.append(_ref_feats)
+        return tuple(ref_feats_all)
 
     @staticmethod
     def filter_with_mask(query, mask=None):
@@ -165,7 +160,6 @@ class MPN(BaseModule):
             _input[mask] = query_new
             return _input
 
-    # all_x = self.mpn.forward_train(all_x, gt_bboxes, ref_gt_bboxes)
     def forward_train(self, x, ref_x,
                       gt_bboxes=None,
                       ref_gt_bboxes=None):
@@ -243,13 +237,15 @@ class MPN(BaseModule):
             IRR_PIXEL_NUM = 50
             if len(ref_obj_list) == 0:
                 # obj irr pixels
-                obj_feats = self.get_obj_irr_pixels(_x)[:IRR_PIXEL_NUM]
+                obj_irr_inds = self.get_obj_irr_inds_topk(_x, IRR_PIXEL_NUM)
+                obj_feats = _x[obj_irr_inds]
             else:
                 obj_feats = torch.cat(ref_obj_list, dim=0)
 
             # objects too small
             if len(obj_feats) == 0:
-                obj_feats = self.get_obj_irr_pixels_topk(_x, IRR_PIXEL_NUM)
+                obj_irr_inds = self.get_obj_irr_pixels_topk(_x, IRR_PIXEL_NUM)
+                obj_feats = _x[obj_irr_inds]
 
             # max num of feats is set to 1000
             feats_list.append(

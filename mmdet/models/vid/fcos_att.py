@@ -126,9 +126,12 @@ class FCOSAtt(BaseVideoDetector):
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
+        batch_input_shape = tuple(img[0].size()[-2:])
+        for img_meta in img_metas:
+            img_meta['batch_input_shape'] = batch_input_shape
+
         key_x = self.detector.backbone(img)
-        with torch.no_grad():
-            ref_x = self.detector.backbone(ref_img[0])
+        ref_x = self.detector.backbone(ref_img[0])
 
         # memory before or after fpn
         if self.memory.before_fpn:
@@ -195,45 +198,9 @@ class FCOSAtt(BaseVideoDetector):
                     self.memory.write_operation(ref_x, ref_bboxes)
 
             x = self.detector.backbone(img)
-            # ref_x = self.memo.feats.copy()
-            # for i in range(len(x)):
-            #     ref_x[i] = torch.cat((ref_x[i], x[i]), dim=0)
-            # ref_img_metas = self.memo.img_metas.copy()
-            # ref_img_metas.extend(img_metas)
         # test with fixed stride
         else:
             raise NotImplementedError
-            # if frame_id == 0:
-            #     self.memo = Dict()
-            #     self.memo.img_metas = ref_img_metas[0]
-            #     ref_x = self.detector.extract_feat(ref_img[0])
-            #     # 'tuple' object (e.g. the output of FPN) does not support
-            #     # item assignment
-            #     self.memo.feats = []
-            #     # the features of img is same as ref_x[i][[num_left_ref_imgs]]
-            #     x = []
-            #     for i in range(len(ref_x)):
-            #         self.memo.feats.append(ref_x[i])
-            #         x.append(ref_x[i][[num_left_ref_imgs]])
-            # elif frame_id % frame_stride == 0:
-            #     assert ref_img is not None
-            #     x = []
-            #     ref_x = self.detector.extract_feat(ref_img[0])
-            #     for i in range(len(ref_x)):
-            #         self.memo.feats[i] = torch.cat(
-            #             (self.memo.feats[i], ref_x[i]), dim=0)[1:]
-            #         x.append(self.memo.feats[i][[num_left_ref_imgs]])
-            #     self.memo.img_metas.extend(ref_img_metas[0])
-            #     self.memo.img_metas = self.memo.img_metas[1:]
-            # else:
-            #     assert ref_img is None
-            #     x = self.detector.extract_feat(img)
-            #
-            # ref_x = self.memo.feats.copy()
-            # for i in range(len(x)):
-            #     ref_x[i][num_left_ref_imgs] = x[i]
-            # ref_img_metas = self.memo.img_metas.copy()
-            # ref_img_metas[num_left_ref_imgs] = img_metas[0]
 
         return x
 
