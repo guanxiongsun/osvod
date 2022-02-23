@@ -11,6 +11,29 @@ from .memory_bank import MemoryBank
 from ..builder import NECKS
 
 
+def get_feats_randomly_single_level(x):
+    """
+    save pixels within detected boxes into memory
+    :param x: [N, C, H, W]
+    :return
+    """
+    n, c, _, w = x.size()
+    feats_list = []
+    for i, _x in enumerate(x):
+        # [C, H, W] -> [H*W, C]
+        _x = _x.view(c, -1).permute(1, 0).contiguous()
+        MAX_NUM_PER_IMG = 2000
+        if len(_x) < MAX_NUM_PER_IMG:
+            feats_list.append(_x)
+        else:
+            # randomly select 2000
+            inds = np.arange(len(_x))
+            np.random.shuffle(inds)
+            feats_list.append(_x[inds[:MAX_NUM_PER_IMG]])
+
+    return torch.cat(feats_list, dim=0)
+
+
 @NECKS.register_module()
 class MPN(BaseModule):
     r"""Memory Pyramid Network.
@@ -102,20 +125,6 @@ class MPN(BaseModule):
                 inds.append(int(x_i + y_j * w))
         return inds
 
-    # @staticmethod
-    # @torch.no_grad()
-    # def get_obj_irr_inds(x, scale=1.0):
-    #     """
-    #     get object irrelevant features
-    #     :param x: [n, c]
-    #     :param scale: factor to control threshold
-    #     :return: [m, c]
-    #     """
-    #     n, c = x.size()
-    #     l2_norm = x.pow(2).sum(dim=1).sqrt() / np.sqrt(c)
-    #     inds = (F.softmax(l2_norm, dim=0) > scale / n)
-    #     return inds
-
     @staticmethod
     @torch.no_grad()
     def get_obj_irr_inds_topk(x, k=50):
@@ -139,9 +148,7 @@ class MPN(BaseModule):
                 continue
 
             _ref_x = ref_x[lvl]
-            _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
-                _ref_x.clone(), ref_gt_bboxes[0].cpu().clone(), self.strides[lvl]
-            )
+            _ref_feats = get_feats_randomly_single_level(_ref_x)
             ref_feats_all.append(_ref_feats)
         return tuple(ref_feats_all)
 
@@ -221,7 +228,7 @@ class MPN(BaseModule):
                 _bboxes_of_cls = _bboxes[cls_ind]
                 # get feats inside high-quality bboxes
                 for box_with_score in _bboxes_of_cls:
-                    if box_with_score[-1] > 0.8:
+                    if box_with_score[-1] > 0.3:
                         box = box_with_score[:4]
                         box = (box / stride).astype(int).tolist()
                         inds = sorted(self.box_to_inds_list(box, w))
