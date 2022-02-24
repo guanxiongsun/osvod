@@ -82,30 +82,14 @@ train_pipeline = [
     dict(type="SeqDefaultFormatBundle", ref_prefix="ref"),
 ]
 
-# test_pipeline = [
-#     dict(type="LoadMultiImagesFromFile"),
-#     dict(type="SeqResize", img_scale=(1000, 600), keep_ratio=True),
-#     dict(type="SeqRandomFlip", share_params=True, flip_ratio=0.0),
-#     dict(type="SeqNormalize", **img_norm_cfg),
-#     dict(type="SeqPad", size_divisor=16),
-#     dict(
-#         type="VideoCollect",
-#         keys=["img"],
-#         meta_keys=("num_left_ref_imgs", "frame_stride"),
-#     ),
-#     dict(type="ConcatVideoReferences"),
-#     dict(type="MultiImagesToTensor", ref_prefix="ref"),
-#     dict(type="ToList"),
-# ]
-
 test_pipeline = [
     dict(type='LoadMultiImagesFromFile', to_float32=True),
     dict(
-        type='MultiScaleFlipAug',
+        type='SeqMultiScaleFlipAug',
         img_scale=(512, 512),
         flip=False,
         transforms=[
-            dict(type='SeqResize', keep_ratio=True),
+            dict(type='Resize', keep_ratio=True),
             dict(
                 type='RandomCenterCropPad',
                 ratios=None,
@@ -118,29 +102,21 @@ test_pipeline = [
                 test_pad_add_pix=1),
             dict(type='RandomFlip'),
             dict(type='Normalize', **img_norm_cfg),
-            dict(type='DefaultFormatBundle'),
-            dict(
-                type='Collect',
-                meta_keys=('filename', 'ori_shape', 'img_shape', 'pad_shape',
-                           'scale_factor', 'flip', 'flip_direction',
-                           'img_norm_cfg', 'border'),
-                keys=['img'])
-        ])
+            ],
+    ),
+    dict(
+        type="VideoCollect",
+        keys=["img"],
+        meta_keys=(
+            'filename', 'ori_shape', 'img_shape', 'pad_shape',
+            'scale_factor', 'flip', 'flip_direction',
+            'img_norm_cfg', 'border',
+            "num_left_ref_imgs", "frame_stride"),
+    ),
+    dict(type="ConcatVideoReferences"),
+    dict(type="MultiImagesToTensor", ref_prefix="ref"),
+    dict(type="ToList"),
 ]
-
-# Use RepeatDataset to speed up training
-# data = dict(
-#     train=dict(
-#         _delete_=True,
-#         type='RepeatDataset',
-#         times=5,
-#         dataset=dict(
-#             type=dataset_type,
-#             ann_file=data_root + 'annotations/instances_train2017.json',
-#             img_prefix=data_root + 'train2017/',
-#             pipeline=train_pipeline)),
-#     val=dict(pipeline=test_pipeline),
-#     test=dict(pipeline=test_pipeline))
 
 data = dict(
     samples_per_gpu=8,
@@ -188,7 +164,11 @@ data = dict(
         type=dataset_type,
         ann_file=data_root + "annotations/imagenet_vid_val.json",
         img_prefix=data_root + "Data/VID",
-        ref_img_sampler=None,
+        ref_img_sampler=dict(
+            num_ref_imgs=14,
+            frame_range=[-7, 7],
+            method='test_with_adaptive_stride'
+        ),
         pipeline=test_pipeline,
         test_mode=True,
     ),
