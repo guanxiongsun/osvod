@@ -176,9 +176,15 @@ class CenterNetAtt(BaseVideoDetector):
         Returns:
             dict[str : list(ndarray)]: The detection results.
         """
+        batch_input_shape = tuple(img[0].size()[-2:])
+        for img_meta in img_metas:
+            img_meta['batch_input_shape'] = batch_input_shape
+
         if ref_img is not None:
             ref_img = ref_img[0]
         if ref_img_metas is not None:
+            for ref_img_meta in ref_img_metas[0][0]:
+                ref_img_meta['batch_input_shape'] = batch_input_shape
             ref_img_metas = ref_img_metas[0]
         x = self.extract_feats(img, img_metas, ref_img, ref_img_metas)
 
