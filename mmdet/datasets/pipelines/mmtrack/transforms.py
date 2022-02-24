@@ -3,7 +3,8 @@ import mmcv
 import numpy as np
 
 from mmdet.datasets.builder import PIPELINES
-from mmdet.datasets.pipelines import Normalize, Pad, RandomCrop, RandomFlip, Resize
+from mmdet.datasets.pipelines import Normalize, Pad, RandomCrop, RandomFlip, Resize, \
+    RandomCenterCropPad
 
 # copy form mmtrack
 # from mmtrack.core import crop_image
@@ -967,3 +968,22 @@ class SeqPhotoMetricDistortion:
         repr_str += f"{(self.saturation_lower, self.saturation_upper)},\n"
         repr_str += f"hue_delta={self.hue_delta})"
         return repr_str
+
+
+@PIPELINES.register_module()
+class SeqRandomCenterCropPad(RandomCenterCropPad):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            img = _results['img']
+            assert img.dtype == np.float32, (
+                'RandomCenterCropPad needs the input image of dtype np.float32,'
+                ' please set "to_float32=True" in "LoadImageFromFile" pipeline')
+            h, w, c = img.shape
+            assert c == len(self.mean)
+            if self.test_mode:
+                outs.append(self._test_aug(_results))
+            else:
+                outs.append(self._train_aug(_results))
+
+        return outs
