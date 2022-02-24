@@ -119,3 +119,35 @@ class MultiScaleFlipAug:
         repr_str += f'img_scale={self.img_scale}, flip={self.flip}, '
         repr_str += f'flip_direction={self.flip_direction})'
         return repr_str
+
+
+# for video methods
+@PIPELINES.register_module()
+class SeqMultiScaleFlipAug(MultiScaleFlipAug):
+    def __call__(self, results):
+        """Call function to apply test time augment transforms on results.
+        Args:
+            results (list): Result list.
+        """
+        flip_args = [(False, None)]
+        if self.flip:
+            flip_args += [(True, direction)
+                          for direction in self.flip_direction]
+        outs = []
+        for _result in results:
+            for scale in self.img_scale:
+                for flip, direction in flip_args:
+                    _results = _result.copy()
+                    _results[self.scale_key] = scale
+                    _results['flip'] = flip
+                    _results['flip_direction'] = direction
+                    _results = self.transforms(_results)
+                    outs.append(_results)
+        return outs
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(transforms={self.transforms}, '
+        repr_str += f'img_scale={self.img_scale}, flip={self.flip}, '
+        repr_str += f'flip_direction={self.flip_direction})'
+        return repr_str
