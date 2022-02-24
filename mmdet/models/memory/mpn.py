@@ -11,29 +11,6 @@ from .memory_bank import MemoryBank
 from ..builder import NECKS
 
 
-def get_feats_randomly_single_level(x):
-    """
-    save pixels within detected boxes into memory
-    :param x: [N, C, H, W]
-    :return
-    """
-    n, c, _, w = x.size()
-    feats_list = []
-    for i, _x in enumerate(x):
-        # [C, H, W] -> [H*W, C]
-        _x = _x.view(c, -1).permute(1, 0).contiguous()
-        MAX_NUM_PER_IMG = 2000
-        if len(_x) < MAX_NUM_PER_IMG:
-            feats_list.append(_x)
-        else:
-            # randomly select 2000
-            inds = np.arange(len(_x))
-            np.random.shuffle(inds)
-            feats_list.append(_x[inds[:MAX_NUM_PER_IMG]])
-
-    return torch.cat(feats_list, dim=0)
-
-
 @NECKS.register_module()
 class MPN(BaseModule):
     r"""Memory Pyramid Network.
@@ -45,6 +22,7 @@ class MPN(BaseModule):
                  strides,
                  before_fpn,
                  start_level,
+                 pixel_sampling_train='bbox',
                  ):
         super().__init__()
         assert isinstance(in_channels, list)
@@ -52,6 +30,7 @@ class MPN(BaseModule):
         self.strides = strides
         self.before_fpn = before_fpn
         self.start_level = start_level
+        self.pixel_sampling_train = pixel_sampling_train
 
         # add memory modules for every level
         self.memories = nn.ModuleList()
@@ -61,6 +40,29 @@ class MPN(BaseModule):
             else:
                 _memory = MemoryBank(_in_channels)
             self.memories.append(_memory)
+
+    @staticmethod
+    def get_feats_randomly_single_level(x):
+        """
+        save pixels within detected boxes into memory
+        :param x: [N, C, H, W]
+        :return
+        """
+        n, c, _, w = x.size()
+        feats_list = []
+        for i, _x in enumerate(x):
+            # [C, H, W] -> [H*W, C]
+            _x = _x.view(c, -1).permute(1, 0).contiguous()
+            MAX_NUM_PER_IMG = 2000
+            if len(_x) < MAX_NUM_PER_IMG:
+                feats_list.append(_x)
+            else:
+                # randomly select 2000
+                inds = np.arange(len(_x))
+                np.random.shuffle(inds)
+                feats_list.append(_x[inds[:MAX_NUM_PER_IMG]])
+
+        return torch.cat(feats_list, dim=0)
 
     def get_ref_feats_from_gtbboxes_single_level_train(self, x, gt_bboxes, stride):
         """
@@ -148,7 +150,14 @@ class MPN(BaseModule):
                 continue
 
             _ref_x = ref_x[lvl]
-            _ref_feats = get_feats_randomly_single_level(_ref_x)
+            if self.pixel_sampling_train == 'random':
+                _ref_feats = self.get_feats_randomly_single_level(_ref_x)
+            elif self.pixel_sampling_train == 'bbox':
+                _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
+                    _ref_x.clone(), ref_gt_bboxes[0].cpu().clone(), self.strides[lvl]
+                )
+            else:
+                raise NotImplementedError
             ref_feats_all.append(_ref_feats)
         return tuple(ref_feats_all)
 
