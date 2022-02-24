@@ -215,15 +215,15 @@ class CocoVideoDataset(CocoDataset):
                 raise NotImplementedError
 
             ref_img_infos = []
-            # if no ref img selected
-            if len(ref_img_ids) == 0:
+            # if no ref img selected in training
+            if len(ref_img_ids) == 0 and not self.test_mode:
                 print("{} ref img selected, pad to {}".format(
                     len(ref_img_ids), num_ref_imgs
                 ))
                 ref_img_ids = [img_id] * num_ref_imgs
 
-            # if less than num_ref_imgs selected
-            if len(ref_img_ids) < num_ref_imgs:
+            # if less than num_ref_imgs selected in training
+            if len(ref_img_ids) < num_ref_imgs and not self.test_mode:
                 print("{} ref img selected, pad to {}".format(
                     len(ref_img_ids), num_ref_imgs
                 ))
