@@ -161,6 +161,18 @@ class MPN(BaseModule):
             ref_feats_all.append(_ref_feats)
         return tuple(ref_feats_all)
 
+    def prepare_memory_train_single_level(self, x, gt_bboxes=None, stride=None):
+        if self.pixel_sampling_train == 'random':
+            _ref_feats = self.get_feats_randomly_single_level(x)
+        elif self.pixel_sampling_train == 'bbox':
+            _ref_feats = self.get_ref_feats_from_gtbboxes_single_level_train(
+                x.clone(), gt_bboxes[0].cpu().clone(), stride
+            )
+        else:
+            raise NotImplementedError
+
+        return _ref_feats
+
     @staticmethod
     def filter_with_mask(query, mask=None):
         if mask is None:
@@ -184,35 +196,40 @@ class MPN(BaseModule):
         # save ref feats to all levels of memory
         if len(ref_gt_bboxes[0]) < 1:
             print(len(ref_gt_bboxes))
-        ref_feats_all = self.prepare_memory_train(ref_x, ref_gt_bboxes)
+        # ref_feats_all_levels = self.prepare_memory_train(ref_x, ref_gt_bboxes)
 
-        outputs = []
-        for lvl, _x in enumerate(x):
+        output_all_levels = []
+        for lvl, _feat_of_current_level in enumerate(x):
             if lvl < self.start_level:
                 # do noting
-                outputs.append(_x)
+                output_all_levels.append(_feat_of_current_level)
                 continue
 
-            # do aggregation
-            # [1, C, H, W]
-            n, c, h, w = _x.size()
-            # [n, c, h, w] -> [n*h*w, c]
-            _x = _x.permute(0, 2, 3, 1).view(-1, c).contiguous()
+            _ref_feats_of_current_level = ref_x[lvl]
+            batch_size = _feat_of_current_level.size(0)
+            feats_all_imgs_in_batch = []
+            for _ind_in_batch in range(batch_size):
+                # [1, c, h, w]
+                _feat_single_img = _feat_of_current_level[_ind_in_batch: _ind_in_batch+1]
+                # [2, c, h, w]
+                _ref_feat_single_img = _ref_feats_of_current_level[2*_ind_in_batch: 2*_ind_in_batch+2]
+                # do aggregation
+                n, c, h, w = _feat_single_img.size()
+                # [n, c, h, w] -> [n*h*w, c]
+                _feat_single_img = _feat_single_img.permute(0, 2, 3, 1).view(-1, c).contiguous()
+                _query = self.filter_with_mask(_feat_single_img)
+                _key = self.prepare_memory_train_single_level(_ref_feat_single_img,
+                                                              ref_gt_bboxes,
+                                                              self.strides[lvl])
+                _query_new = self.memories[lvl](_query, _key)
+                _output_single_img = self.update_with_query(_feat_single_img, _query_new)
+                # [n*h*w, c] -> [n, c, h, w]
+                _output_single_img = _output_single_img.view(n, h, w, c).permute(0, 3, 1, 2).contiguous()
+                feats_all_imgs_in_batch.append(_output_single_img)
+            output_all_imgs_in_batch = torch.cat(feats_all_imgs_in_batch, dim=0)
+        output_all_levels.append(output_all_imgs_in_batch)
 
-            _query = self.filter_with_mask(_x)
-            # query = _x[_mask]
-            _key = ref_feats_all[lvl]
-            if len(_key) == 0:
-                print(_key.shape)
-            _query_new = self.memories[lvl](_query, _key)
-            _output = self.update_with_query(_x, _query_new)
-            # _x[_mask] = query_new
-
-            # [n*h*w, c] -> [n, c, h, w]
-            _output = _output.view(n, h, w, c).permute(0, 3, 1, 2).contiguous()
-            outputs.append(_output)
-
-        return tuple(outputs)
+        return tuple(output_all_levels)
 
     def get_feats_inside_bboxes_single_level(self, x, bboxes, stride):
         """
