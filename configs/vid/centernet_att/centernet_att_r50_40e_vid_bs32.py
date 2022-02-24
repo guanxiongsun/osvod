@@ -4,34 +4,45 @@ _base_ = [
 ]
 
 model = dict(
-    type='CenterNet',
-    backbone=dict(
-        type='ResNet',
-        depth=50,
-        num_stages=4,
-        out_indices=(3,),
-        frozen_stages=1,
-        norm_cfg=dict(type="BN", requires_grad=True),
-        norm_eval=True,
-        style="pytorch",
-        init_cfg=dict(
-            type='Pretrained', checkpoint='torchvision://resnet50')),
-    neck=dict(
-        type='CTResNetNeck',
-        in_channel=2048,
-        num_deconv_filters=(256, 128, 64),
-        num_deconv_kernels=(4, 4, 4),
-        use_dcn=True),
-    bbox_head=dict(
-        type='CenterNetHead',
-        num_classes=30,
-        in_channel=64,
-        feat_channel=64,
-        loss_center_heatmap=dict(type='GaussianFocalLoss', loss_weight=1.0),
-        loss_wh=dict(type='L1Loss', loss_weight=0.1),
-        loss_offset=dict(type='L1Loss', loss_weight=1.0)),
-    train_cfg=None,
-    test_cfg=dict(topk=100, local_maximum_kernel=3, max_per_img=100))
+    type='CenterNetAtt',
+    detector=dict(
+        type='CenterNet',
+        backbone=dict(
+            type='ResNet',
+            depth=50,
+            num_stages=4,
+            out_indices=(3,),
+            frozen_stages=1,
+            norm_cfg=dict(type="BN", requires_grad=True),
+            norm_eval=True,
+            style="pytorch",
+            init_cfg=dict(
+                type='Pretrained', checkpoint='torchvision://resnet50')),
+        neck=dict(
+            type='CTResNetNeck',
+            in_channel=2048,
+            num_deconv_filters=(256, 128, 64),
+            num_deconv_kernels=(4, 4, 4),
+            use_dcn=True),
+        bbox_head=dict(
+            type='CenterNetHead',
+            num_classes=30,
+            in_channel=64,
+            feat_channel=64,
+            loss_center_heatmap=dict(type='GaussianFocalLoss', loss_weight=1.0),
+            loss_wh=dict(type='L1Loss', loss_weight=0.1),
+            loss_offset=dict(type='L1Loss', loss_weight=1.0)),
+        train_cfg=None,
+        test_cfg=dict(topk=100, local_maximum_kernel=3, max_per_img=100)),
+    memory=dict(
+        type='MPN',
+        in_channels=[2048],
+        strides=[32],
+        before_fpn=True,
+        start_level=0,
+        pixel_sampling_train='random',
+    ),
+)
 
 
 # dataset settings
@@ -43,54 +54,58 @@ img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 
 train_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
-    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='LoadMultiImagesFromFile', to_float32=True, color_type='color'),
+    dict(type='SeqLoadAnnotations', with_bbox=True, with_track=True),
     dict(
-        type='PhotoMetricDistortion',
+        type='SeqPhotoMetricDistortion',
+        share_params=False,
         brightness_delta=32,
         contrast_range=(0.5, 1.5),
         saturation_range=(0.5, 1.5),
         hue_delta=18),
     dict(
-        type='RandomCenterCropPad',
+        type='SeqRandomCenterCropPad',
         crop_size=(512, 512),
         ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4),
         mean=[0, 0, 0],
         std=[1, 1, 1],
         to_rgb=True,
         test_pad_mode=None),
-    dict(type='Resize', img_scale=(512, 512), keep_ratio=True),
-    dict(type='RandomFlip', flip_ratio=0.5),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
+    dict(type='SeqResize', img_scale=(512, 512), keep_ratio=True),
+    dict(type='SeqRandomFlip', share_params=True, flip_ratio=0.5),
+    dict(type='SeqNormalize', **img_norm_cfg),
+    dict(type="SeqPad", size_divisor=32),
+    dict(
+        type="VideoCollect", keys=["img", "gt_bboxes", "gt_labels", "gt_instance_ids"]
+    ),
+    dict(type="ConcatVideoReferences"),
+    dict(type="SeqDefaultFormatBundle", ref_prefix="ref"),
 ]
 
-# from imagenet_vid_base_style
 # test_pipeline = [
+#     dict(type="LoadMultiImagesFromFile"),
+#     dict(type="SeqResize", img_scale=(1000, 600), keep_ratio=True),
+#     dict(type="SeqRandomFlip", share_params=True, flip_ratio=0.0),
+#     dict(type="SeqNormalize", **img_norm_cfg),
+#     dict(type="SeqPad", size_divisor=16),
 #     dict(
-#         type="MultiScaleFlipAug",
-#         img_scale=(1000, 600),
-#         flip=False,
-#         transforms=[
-#             dict(type="Resize", keep_ratio=True),
-#             dict(type="RandomFlip"),
-#             dict(type="Normalize", **img_norm_cfg),
-#             dict(type="Pad", size_divisor=16),
-#             dict(type="ImageToTensor", keys=["img"]),
-#             dict(type="VideoCollect", keys=["img"]),
-#         ],
+#         type="VideoCollect",
+#         keys=["img"],
+#         meta_keys=("num_left_ref_imgs", "frame_stride"),
 #     ),
+#     dict(type="ConcatVideoReferences"),
+#     dict(type="MultiImagesToTensor", ref_prefix="ref"),
+#     dict(type="ToList"),
 # ]
 
 test_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True),
+    dict(type='LoadMultiImagesFromFile', to_float32=True),
     dict(
         type='MultiScaleFlipAug',
         img_scale=(512, 512),
         flip=False,
         transforms=[
-            dict(type='Resize', keep_ratio=True),
+            dict(type='SeqResize', keep_ratio=True),
             dict(
                 type='RandomCenterCropPad',
                 ratios=None,
@@ -138,7 +153,12 @@ data = dict(
                 type=dataset_type,
                 ann_file=data_root + "annotations/imagenet_vid_train.json",
                 img_prefix=data_root + "Data/VID",
-                ref_img_sampler=None,
+                ref_img_sampler=dict(
+                    num_ref_imgs=2,
+                    frame_range=9,
+                    filter_key_img=True,
+                    method="bilateral_uniform",
+                ),
                 pipeline=train_pipeline,
             ),
             dict(
@@ -146,7 +166,12 @@ data = dict(
                 load_as_video=False,
                 ann_file=data_root + "annotations/imagenet_det_30plus1cls.json",
                 img_prefix=data_root + "Data/DET",
-                ref_img_sampler=None,
+                ref_img_sampler=dict(
+                    num_ref_imgs=2,
+                    frame_range=0,
+                    filter_key_img=False,
+                    method="bilateral_uniform",
+                ),
                 pipeline=train_pipeline,
             ),
         ]
