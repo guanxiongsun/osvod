@@ -18,7 +18,7 @@ from .roi_heads import *  # noqa: F401,F403
 from .seg_heads import *  # noqa: F401,F403
 
 # add video models
-from .vid import SELSA, FCOSAtt
+from .vid import SELSA, FCOSAtt, CenterNetAtt
 from .aggregators import SelsaAggregator
 from .memory import MPN
 
@@ -29,5 +29,5 @@ __all__ = [
     # add wrapper for video models
     'build_model', 'SELSA', 'AGGREGATORS', 'build_aggregator',
     # build memory
-    'build_memory', 'FCOSAtt', 'MPN'
+    'build_memory', 'FCOSAtt', 'MPN', 'CenterNetAtt',
 ]

@@ -34,6 +34,7 @@ from .mmtrack.transforms import (
     SeqRandomFlip,
     SeqResize,
     SeqShiftScaleAug,
+    SeqRandomCenterCropPad,
 )
 
 __all__ = [
@@ -67,4 +68,5 @@ __all__ = [
     "SeqColorAug",
     "ToList",
     "ReIDFormatBundle",
+    "SeqRandomCenterCropPad",
 ]

@@ -54,15 +54,17 @@ class CenterNetAtt(BaseVideoDetector):
                       ref_gt_masks=None,
                       ref_proposals=None,
                       **kwargs):
-        assert len(img) == 1, \
-            'selsa video detector only supports 1 batch size per gpu for now.'
+        # assert len(img) == 1, \
+        #     'selsa video detector only supports 1 batch size per gpu for now.'
 
         batch_input_shape = tuple(img[0].size()[-2:])
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
 
         key_x = self.detector.backbone(img)
-        ref_x = self.detector.backbone(ref_img[0])
+        b, num_ref, c, h, w = ref_img.size()
+        # [b*num_ref, c, h, w]
+        ref_x = self.detector.backbone(ref_img.reshape(b*num_ref, c, h, w))
 
         # memory before or after fpn
         if self.memory.before_fpn:
@@ -174,9 +176,15 @@ class CenterNetAtt(BaseVideoDetector):
         Returns:
             dict[str : list(ndarray)]: The detection results.
         """
+        batch_input_shape = tuple(img[0].size()[-2:])
+        for img_meta in img_metas:
+            img_meta['batch_input_shape'] = batch_input_shape
+
         if ref_img is not None:
             ref_img = ref_img[0]
         if ref_img_metas is not None:
+            for ref_img_meta in ref_img_metas[0][0]:
+                ref_img_meta['batch_input_shape'] = batch_input_shape
             ref_img_metas = ref_img_metas[0]
         x = self.extract_feats(img, img_metas, ref_img, ref_img_metas)
 
