@@ -1,7 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
-
-import torch
+from copy import deepcopy
 from mmdet.models import build_detector, build_memory
 from mmdet.core import bbox2result
 from ..builder import MODELS
@@ -74,7 +73,12 @@ class CenterNetAtt(BaseVideoDetector):
             if self.detector.with_neck:
                 key_x = self.detector.neck(key_x)
         else:
-            raise NotImplementedError
+            if self.detector.with_neck:
+                key_x = self.detector.neck(key_x)
+                ref_x = self.detector.neck(ref_x)
+            key_x = self.memory.forward_train(key_x, ref_x,
+                                              gt_bboxes=gt_bboxes,
+                                              ref_gt_bboxes=ref_gt_bboxes)
 
         losses = self.detector.bbox_head.forward_train(key_x, img_metas, gt_bboxes,
                                                        gt_labels, gt_bboxes_ignore)
@@ -95,9 +99,20 @@ class CenterNetAtt(BaseVideoDetector):
             # first frame
             # init memory with ref_frames
             if frame_id == 0:
-                self.memory.reset()
+                video = img_metas[0]["filename"].split("/")[-2]
+                video_id = int(video.split("_")[-1])
+                if video_id % 1000 == 0:
+                    print(video)
+                    self.memory.reset()
+                # self.memory.reset()
                 # do detection
                 ref_bboxes = self.detector.simple_test(ref_img[0], ref_img_metas[0])
+                # ref_bboxes += border
+                border = img_metas[0]['border'][..., [2, 0, 2, 0]]
+                for ref_bbox in ref_bboxes:
+                    for bbox in ref_bbox:
+                        # bbox[..., :-1] *= scale_factor
+                        bbox[..., :-1] += border
 
                 # write into memory
                 ref_x = self.detector.backbone(ref_img[0])
@@ -206,16 +221,17 @@ class CenterNetAtt(BaseVideoDetector):
             bbox2result(det_bboxes, det_labels, self.detector.bbox_head.num_classes)
             for det_bboxes, det_labels in results_list
         ]
+        results = deepcopy(outs)
 
         # write into memory
+        # transform from ori_img coordinate back to feat_map coordinate
+        scale_factor = img_metas[0]['scale_factor']
+        border = img_metas[0]['border'][..., [2, 0, 2, 0]]
+        for out in outs:
+            for bbox in out:
+                bbox[..., :-1] *= scale_factor
+                bbox[..., :-1] += border
         self.memory.write_operation(x_2b_save, outs)
-
-        # results = dict()
-        # results['det_bboxes'] = outs[0]
-        # if len(outs) == 2:
-        #     results['det_masks'] = outs[1]
-
-        results = outs
         return results
 
     def aug_test(self, imgs, img_metas, **kwargs):
