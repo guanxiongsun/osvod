@@ -9,7 +9,7 @@ model = dict(
         type='CenterNet',
         backbone=dict(
             type='ResNet',
-            depth=50,
+            depth=101,
             num_stages=4,
             out_indices=(3,),
             frozen_stages=1,
@@ -17,7 +17,7 @@ model = dict(
             norm_eval=True,
             style="pytorch",
             init_cfg=dict(
-                type='Pretrained', checkpoint='torchvision://resnet50')),
+                type='Pretrained', checkpoint='torchvision://resnet101')),
         neck=dict(
             type='CTResNetNeck',
             in_channel=2048,
@@ -190,10 +190,10 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=1000,
     warmup_ratio=1.0 / 1000,
-    step=[5])  # the real step is [5*5]
+    step=[10])  # the real step is [10*5]
 
 # runtime settings
-total_epochs = 8
-checkpoint_config = dict(interval=5)
+total_epochs = 16
+checkpoint_config = dict(interval=10)
 evaluation = dict(metric=["bbox"], interval=total_epochs)
 runner = dict(type="EpochBasedRunner", max_epochs=total_epochs)  # the real epoch is 8*5=40
