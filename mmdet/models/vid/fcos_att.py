@@ -2,7 +2,7 @@
 import warnings
 
 import torch
-from addict import Dict
+from copy import deepcopy
 from mmdet.models import build_detector, build_memory
 from mmdet.core import bbox2result
 from ..builder import MODELS
@@ -277,16 +277,14 @@ class FCOSAtt(BaseVideoDetector):
             bbox2result(det_bboxes, det_labels, self.detector.bbox_head.num_classes)
             for det_bboxes, det_labels in results_list
         ]
+        results = deepcopy(outs)
 
         # write into memory
+        scale_factor = img_metas[0]['scale_factor']
+        for out in outs:
+            for bbox in out:
+                bbox[:, :-1] *= scale_factor
         self.memory.write_operation(x_2b_save, outs)
-
-        # results = dict()
-        # results['det_bboxes'] = outs[0]
-        # if len(outs) == 2:
-        #     results['det_masks'] = outs[1]
-
-        results = outs
         return results
 
     def aug_test(self, imgs, img_metas, **kwargs):
