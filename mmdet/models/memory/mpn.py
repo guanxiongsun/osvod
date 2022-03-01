@@ -248,6 +248,13 @@ class MPN(BaseModule):
 
             # [C, H, W] -> [H*W, C]
             _x = _x.view(c, -1).permute(1, 0).contiguous()
+
+            # if num_feats < 2000, use all feats
+            MIN_PIX_NUM = 2000
+            if len(_x) < MIN_PIX_NUM:
+                feats_list.append(_x)
+                continue
+
             # get bboxes of this image
             _bboxes = bboxes[i]     # 30 x [n, 5]
             for cls_ind in range(len(_bboxes)):
