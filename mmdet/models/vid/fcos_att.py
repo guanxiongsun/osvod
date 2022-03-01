@@ -171,7 +171,7 @@ class FCOSAtt(BaseVideoDetector):
                 video = img_metas[0]["filename"].split("/")[-2]
                 video_id = int(video.split("_")[-1])
                 if video_id % 1000 == 0:
-                    print(video)
+                    print("\n"+video)
                     self.memory.reset()
                 # do detection
                 ref_bboxes = self.detector.simple_test(ref_img[0], ref_img_metas[0])

@@ -102,7 +102,7 @@ class CenterNetAtt(BaseVideoDetector):
                 video = img_metas[0]["filename"].split("/")[-2]
                 video_id = int(video.split("_")[-1])
                 if video_id % 1000 == 0:
-                    print(video)
+                    print("\n"+video)
                     self.memory.reset()
                 # self.memory.reset()
                 # do detection
