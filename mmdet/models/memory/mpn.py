@@ -284,12 +284,15 @@ class MPN(BaseModule):
         for lvl, _x in enumerate(x):
             if lvl < self.start_level:
                 continue
-            _device = _x.device
+            # [fix] the memory increasing bug when evaluation
+            # [fix] _device = _x.device
             _feats = self.get_feats_inside_bboxes_single_level(
-                _x.cpu(), bboxes, self.strides[lvl]
+                # [fix] _x.cpu(), bboxes, self.strides[lvl]
+                _x, bboxes, self.strides[lvl]
             )
             # update memory
-            self.memories[lvl].update(_feats.to(_device))
+            # [fix] self.memories[lvl].update(_feats.to(_device))
+            self.memories[lvl].update(_feats)
         return
 
     def forward_test(self, x):
