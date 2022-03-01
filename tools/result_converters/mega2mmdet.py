@@ -1,11 +1,7 @@
 import torch
-
-from .utils.structures import BoxList
+from tqdm import tqdm
 import argparse
-import os
-
 import mmcv
-from PIL import Image
 import numpy as np
 from mmdet.datasets import build_dataset
 
@@ -13,9 +9,7 @@ from mmdet.datasets import build_dataset
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Convert images to coco format without annotations')
-    parser.add_argument('img_path', help='The root path of images')
-    parser.add_argument(
-        'classes', type=str, help='The text file name of storage class list')
+    parser.add_argument('mega_results', help='The root path of images')
     parser.add_argument(
         'out',
         type=str,
@@ -27,7 +21,7 @@ def parse_args():
 
 def cvt_mega_results_to_coco_format(mega_results, dataset):
     all_results = []
-    for img_id, result in enumerate(mega_results):
+    for img_id, result in enumerate(tqdm(mega_results)):
         img_info = dataset.data_infos[img_id]
         all_results.append(
             cvt_mega_results_to_coco_format_single(
@@ -39,9 +33,12 @@ def cvt_mega_results_to_coco_format(mega_results, dataset):
 
 def cvt_mega_results_to_coco_format_single(prediction, img_width, img_height):
     prediction = prediction.resize((img_width, img_height))
-    coco_prediction_list = [[]]*30
+    coco_prediction_list = [[] for _ in range(30)]
     if len(prediction) > 0:
-        for box, label, score in zip(prediction):
+        for box, label, score in zip(prediction.bbox,
+                                     prediction.get_field('labels'),
+                                     prediction.get_field('scores')
+                                     ):
             label = label.int().tolist()
             label_ind = label - 1
             bbox = box.tolist()
@@ -59,7 +56,7 @@ def cvt_mega_results_to_coco_format_single(prediction, img_width, img_height):
 def main():
     args = parse_args()
     assert args.out.endswith(
-        'json'), 'The output file name must be json suffix'
+        'pkl'), 'The output file name must be json suffix'
 
     # dataset settings
     dataset_type = "ImagenetVIDDataset"
@@ -86,11 +83,11 @@ def main():
     mega_results_coco_format = cvt_mega_results_to_coco_format(mega_results, dataset)
 
     # 3 dump
-    save_dir = os.path.join(args.img_path, '..', 'annotations')
-    mmcv.mkdir_or_exist(save_dir)
-    save_path = os.path.join(save_dir, args.out)
-    mmcv.dump(mega_results_coco_format, save_path)
-    print(f'save json file: {save_path}')
+    # save_dir = os.path.join(args.img_path, '..', 'annotations')
+    # mmcv.mkdir_or_exist(save_dir)
+    # save_path = os.path.join(save_dir, args.out)
+    mmcv.dump(mega_results_coco_format, args.out)
+    print(f'save pkl file: {args.out}')
 
 
 if __name__ == '__main__':
