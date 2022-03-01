@@ -170,7 +170,8 @@ class FCOSAtt(BaseVideoDetector):
             if frame_id == 0:
                 self.memory.reset()
                 # do detection
-                ref_bboxes = self.detector.simple_test(ref_img[0], ref_img_metas[0])
+                ref_bboxes = self.detector.simple_test(ref_img[0], ref_img_metas[0],
+                                                       rescale=True)
 
                 # write into memory
                 ref_x = self.detector.backbone(ref_img[0])
