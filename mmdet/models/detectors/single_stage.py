@@ -101,9 +101,22 @@ class SingleStageDetector(BaseDetector):
         feat = self.extract_feat(img)
         results_list = self.bbox_head.simple_test(
             feat, img_metas, rescale=rescale)
+
+        det_levels = results_list[0][2]
+        det_labels = results_list[0][1]
+        det_bboxes = results_list[0][0]
+        det_scores = det_bboxes[:, -1]
+        keep_thresh = 0.1
+        keep_ind = det_scores > keep_thresh
+        det_levels = det_levels[keep_ind]
+        det_bboxes = det_bboxes[keep_ind]
+        det_labels = det_labels[keep_ind]
+
+        # concat level_index after scores
+        det_bboxes = torch.cat([det_bboxes, det_levels.unsqueeze(-1)], dim=1)
+
         bbox_results = [
             bbox2result(det_bboxes, det_labels, self.bbox_head.num_classes)
-            for det_bboxes, det_labels in results_list
         ]
         return bbox_results
 

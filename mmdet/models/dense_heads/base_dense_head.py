@@ -278,6 +278,13 @@ class BaseDenseHead(BaseModule, metaclass=ABCMeta):
         mlvl_bboxes = torch.cat(mlvl_bboxes)
         if rescale:
             mlvl_bboxes /= mlvl_bboxes.new_tensor(scale_factor)
+
+        # create det_levels
+        mlvl_levels = []
+        for lvl, label in enumerate(mlvl_labels):
+            mlvl_levels.append(torch.ones_like(label).fill_(lvl))
+        mlvl_levels = torch.cat(mlvl_levels)
+
         mlvl_scores = torch.cat(mlvl_scores)
         mlvl_labels = torch.cat(mlvl_labels)
 
@@ -296,7 +303,8 @@ class BaseDenseHead(BaseModule, metaclass=ABCMeta):
                                                 mlvl_labels, cfg.nms)
             det_bboxes = det_bboxes[:cfg.max_per_img]
             det_labels = mlvl_labels[keep_idxs][:cfg.max_per_img]
-            return det_bboxes, det_labels
+            det_levels = mlvl_levels[keep_idxs][:cfg.max_per_img]
+            return det_bboxes, det_labels, det_levels
         else:
             return mlvl_bboxes, mlvl_scores, mlvl_labels
 
