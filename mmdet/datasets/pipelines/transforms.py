@@ -2736,3 +2736,50 @@ class YOLOXHSVRandomAug:
         repr_str += f'saturation_delta={self.saturation_delta}, '
         repr_str += f'value_delta={self.value_delta})'
         return repr_str
+
+
+@PIPELINES.register_module()
+class SeqMixUp(MixUp):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            _results = super().__call__(_results)
+            outs.append(_results)
+        return outs
+
+
+@PIPELINES.register_module()
+class SeqMosaic(Mosaic):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            _results = super().__call__(_results)
+            outs.append(_results)
+        return outs
+
+
+@PIPELINES.register_module()
+class SeqRandomAffine(RandomAffine):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            _results = super().__call__(_results)
+            outs.append(_results)
+        return outs
+
+
+@PIPELINES.register_module()
+class SeqYOLOXHSVRandomAug(YOLOXHSVRandomAug):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            _results = super().__call__(_results)
+            outs.append(_results)
+        return outs
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(hue_delta={self.hue_delta}, '
+        repr_str += f'saturation_delta={self.saturation_delta}, '
+        repr_str += f'value_delta={self.value_delta})'
+        return repr_str

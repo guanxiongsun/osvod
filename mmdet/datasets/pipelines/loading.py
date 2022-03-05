@@ -581,3 +581,18 @@ class FilterAnnotations:
         return self.__class__.__name__ + \
                f'(min_gt_bbox_wh={self.min_gt_bbox_wh},' \
                f'always_keep={self.always_keep})'
+
+
+@PIPELINES.register_module()
+class SeqFilterAnnotations(FilterAnnotations):
+    def __call__(self, results):
+        outs = []
+        for _results in results:
+            _results = super().__call__(_results)
+            outs.append(_results)
+        return outs
+
+    def __repr__(self):
+        return self.__class__.__name__ + \
+               f'(min_gt_bbox_wh={self.min_gt_bbox_wh},' \
+               f'always_keep={self.always_keep})'
