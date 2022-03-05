@@ -645,6 +645,46 @@ class ResNet(BaseModule):
                 outs.append(x)
         return tuple(outs)
 
+    def forward2s3(self, x):
+        """Forward function."""
+        if self.deep_stem:
+            x = self.stem(x)
+        else:
+            x = self.conv1(x)
+            x = self.norm1(x)
+            x = self.relu(x)
+        x = self.maxpool(x)
+        outs = []
+        for i, layer_name in enumerate(self.res_layers):
+            res_layer = getattr(self, layer_name)
+            x = res_layer(x)
+            if i == 2:
+                outs.append(x)
+                break
+        return tuple(outs)
+
+    def forwards4(self, x):
+        """Forward function."""
+        # if self.deep_stem:
+        #     x = self.stem(x)
+        # else:
+        #     x = self.conv1(x)
+        #     x = self.norm1(x)
+        #     x = self.relu(x)
+        # x = self.maxpool(x)
+        assert len(x) == 1
+        x = x[0]
+        outs = []
+        for i, layer_name in enumerate(self.res_layers):
+            if i < 3:
+                continue
+            res_layer = getattr(self, layer_name)
+            x = res_layer(x)
+            outs.append(x)
+            break
+
+        return tuple(outs)
+
     def train(self, mode=True):
         """Convert the model into training mode while keep normalization layer
         freezed."""

@@ -60,25 +60,27 @@ class CenterNetAtt(BaseVideoDetector):
         for img_meta in img_metas:
             img_meta['batch_input_shape'] = batch_input_shape
 
-        key_x = self.detector.backbone(img)
+        key_x = self.detector.backbone.forward2s3(img)
         b, num_ref, c, h, w = ref_img.size()
         # [b*num_ref, c, h, w]
-        ref_x = self.detector.backbone(ref_img.reshape(b*num_ref, c, h, w))
+        ref_x = self.detector.backbone.forward2s3(ref_img.reshape(b*num_ref, c, h, w))
 
         # memory before or after fpn
         if self.memory.before_fpn:
             key_x = self.memory.forward_train(key_x, ref_x,
                                               gt_bboxes=gt_bboxes,
                                               ref_gt_bboxes=ref_gt_bboxes)
+            key_x = self.detector.backbone.forwards4(key_x)
             if self.detector.with_neck:
                 key_x = self.detector.neck(key_x)
         else:
-            if self.detector.with_neck:
-                key_x = self.detector.neck(key_x)
-                ref_x = self.detector.neck(ref_x)
-            key_x = self.memory.forward_train(key_x, ref_x,
-                                              gt_bboxes=gt_bboxes,
-                                              ref_gt_bboxes=ref_gt_bboxes)
+            raise NotImplementedError
+            # if self.detector.with_neck:
+            #     key_x = self.detector.neck(key_x)
+            #     ref_x = self.detector.neck(ref_x)
+            # key_x = self.memory.forward_train(key_x, ref_x,
+            #                                   gt_bboxes=gt_bboxes,
+            #                                   ref_gt_bboxes=ref_gt_bboxes)
 
         losses = self.detector.bbox_head.forward_train(key_x, img_metas, gt_bboxes,
                                                        gt_labels, gt_bboxes_ignore)
@@ -115,14 +117,15 @@ class CenterNetAtt(BaseVideoDetector):
                         bbox[..., :-1] += border
 
                 # write into memory
-                ref_x = self.detector.backbone(ref_img[0])
+                ref_x = self.detector.backbone.forward2s3(ref_img[0])
                 # memory before or after fpn
                 if self.memory.before_fpn:
                     self.memory.write_operation(ref_x, ref_bboxes)
                 else:
-                    if self.detector.with_neck:
-                        ref_x = self.detector.neck(ref_x)
-                    self.memory.write_operation(ref_x, ref_bboxes)
+                    raise NotImplementedError
+                    # if self.detector.with_neck:
+                    #     ref_x = self.detector.neck(ref_x)
+                    # self.memory.write_operation(ref_x, ref_bboxes)
 
             # no feats in memory
             if len(self.memory.memories[self.memory.start_level]) == 0:
@@ -130,16 +133,17 @@ class CenterNetAtt(BaseVideoDetector):
                 ref_bboxes = self.detector.simple_test(img, img_metas)
 
                 # write into memory
-                ref_x = self.detector.backbone(img)
+                ref_x = self.detector.backbone.forward2s3(img)
                 # memory before or after fpn
                 if self.memory.before_fpn:
                     self.memory.write_operation(ref_x, ref_bboxes)
                 else:
-                    if self.detector.with_neck:
-                        ref_x = self.detector.neck(ref_x)
-                    self.memory.write_operation(ref_x, ref_bboxes)
+                    raise NotImplementedError
+                    # if self.detector.with_neck:
+                    #     ref_x = self.detector.neck(ref_x)
+                    # self.memory.write_operation(ref_x, ref_bboxes)
 
-            x = self.detector.backbone(img)
+            x = self.detector.backbone.forward2s3(img)
         # test with fixed stride
         else:
             raise NotImplementedError
@@ -207,13 +211,15 @@ class CenterNetAtt(BaseVideoDetector):
         if self.memory.before_fpn:
             x = self.memory.forward_test(x)
             x_2b_save = x
+            x = self.detector.backbone.forwards4(x)
             if self.detector.with_neck:
                 x = self.detector.neck(x)
         else:
-            if self.detector.with_neck:
-                x = self.detector.neck(x)
-            x = self.memory.forward_test(x)
-            x_2b_save = x
+            raise NotImplementedError
+            # if self.detector.with_neck:
+            #     x = self.detector.neck(x)
+            # x = self.memory.forward_test(x)
+            # x_2b_save = x
 
         results_list = self.detector.bbox_head.simple_test(
             x, img_metas, rescale=rescale)
