@@ -124,6 +124,8 @@ def imshow_det_bboxes(img,
     color = []
     for i, (bbox, label) in enumerate(zip(bboxes, labels)):
         bbox_int = bbox.astype(np.int32)
+        if bbox[-2] < score_thr:
+            continue
         poly = [[bbox_int[0], bbox_int[1]], [bbox_int[0], bbox_int[3]],
                 [bbox_int[2], bbox_int[3]], [bbox_int[2], bbox_int[1]]]
         np_poly = np.array(poly).reshape((4, 2))
@@ -132,8 +134,8 @@ def imshow_det_bboxes(img,
         label_text = class_names[
             label] if class_names is not None else f'class {label}'
         if len(bbox) > 4:
-            label_text += f'||{bbox[-2]:.01f}'
-            label_text += f'||{int(bbox[-1]):1d}'
+            label_text += f'||score:{bbox[-2]:.01f}'
+            label_text += f'||level:{int(bbox[-1]):1d}'
         ax.text(
             bbox_int[0],
             bbox_int[1],
