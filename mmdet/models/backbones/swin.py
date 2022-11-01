@@ -668,6 +668,7 @@ class SwinTransformer(BaseModule):
 
     def init_weights(self):
         logger = get_root_logger()
+        print("init weight with swin function!!!!!!!!!!!!!!!!!!")
         if self.init_cfg is None:
             logger.warn(f'No pre-trained weights for '
                         f'{self.__class__.__name__}, '
