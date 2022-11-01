@@ -7,6 +7,7 @@ _base_ = [
 pretrained = 'https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_tiny_patch4_window7_224.pth'  # noqa
 
 model = dict(
+    detector=dict(
     backbone=dict(
         _delete_=True,
         type='SwinTransformer',
@@ -26,6 +27,7 @@ model = dict(
         convert_weights=True,
         init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
     neck=dict(in_channels=[96, 192, 384, 768]))
+)
 
 # optimizer
 optimizer = dict(
