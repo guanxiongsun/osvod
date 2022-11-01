@@ -14,6 +14,7 @@ prompt_dict = dict(
 )
 
 model = dict(
+    detector=dict(
     backbone=dict(
         _delete_=True,
         type='PromptedSwinTransformer',
@@ -34,6 +35,7 @@ model = dict(
         convert_weights=True,
         init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
     neck=dict(in_channels=[96, 192, 384, 768]))
+)
 
 # optimizer
 optimizer = dict(
