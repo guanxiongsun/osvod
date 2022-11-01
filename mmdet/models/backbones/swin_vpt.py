@@ -1,9 +1,10 @@
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
-
+from typing import Sequence
 import torch
 import torch.nn as nn
+from torch.nn import Conv2d, Dropout
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_norm_layer, constant_init, trunc_normal_init
@@ -18,7 +19,78 @@ from ..utils.ckpt_convert import swin_converter
 from ..utils.transformer import PatchEmbed, PatchMerging
 
 
-class WindowMSA(BaseModule):
+# modified from VPT
+class PromptedPatchMerging(PatchMerging):
+    def upsample_prompt(self, prompt_emb):
+        if self.prompt_upsampling is not None:
+            prompt_emb = self.prompt_upsampling(prompt_emb)
+        else:
+            prompt_emb = torch.cat(
+                (prompt_emb, prompt_emb, prompt_emb, prompt_emb), dim=-1)
+        return prompt_emb
+
+    def forward(self, x, input_size):
+        """
+        Args:
+            x (Tensor): Has shape (B, H*W+num_prompt, C_in).
+            input_size (tuple[int]): The spatial shape of x, arrange as (H, W).
+                Default: None.
+
+        Returns:
+            tuple: Contains merged results and its spatial shape.
+
+                - x (Tensor): Has shape (B, Merged_H * Merged_W, C_out)
+                - out_size (tuple[int]): Spatial shape of x, arrange as
+                    (Merged_H, Merged_W).
+        """
+        B, L, C = x.shape
+        assert isinstance(input_size, Sequence), f'Expect ' \
+                                                 f'input_size is ' \
+                                                 f'`Sequence` ' \
+                                                 f'but get {input_size}'
+
+        H, W = input_size
+
+        if self.prompt_location == "prepend":
+            # change input size
+            prompt_emb = x[:, :self.num_prompts, :]
+            x = x[:, self.num_prompts:, :]
+            L = L - self.num_prompts
+            prompt_emb = self.upsample_prompt(prompt_emb)
+
+        assert L == H * W, 'input feature has wrong size'
+
+        x = x.view(B, H, W, C).permute([0, 3, 1, 2])  # B, C, H, W
+        # Use nn.Unfold to merge patch. About 25% faster than original method,
+        # but need to modify pretrained model for compatibility
+
+        if self.adap_padding:
+            x = self.adap_padding(x)
+            H, W = x.shape[-2:]
+
+        x = self.sampler(x)
+        # if kernel_size=2 and stride=2, x should has shape (B, 4*C, H/2*W/2)
+
+        out_h = (H + 2 * self.sampler.padding[0] - self.sampler.dilation[0] *
+                 (self.sampler.kernel_size[0] - 1) -
+                 1) // self.sampler.stride[0] + 1
+        out_w = (W + 2 * self.sampler.padding[1] - self.sampler.dilation[1] *
+                 (self.sampler.kernel_size[1] - 1) -
+                 1) // self.sampler.stride[1] + 1
+
+        output_size = (out_h, out_w)
+        x = x.transpose(1, 2)  # B, H/2*W/2, 4*C
+
+        # add the prompt back:
+        if self.prompt_location == "prepend":
+            x = torch.cat((prompt_emb, x), dim=1)
+
+        x = self.norm(x) if self.norm else x
+        x = self.reduction(x)
+        return x, output_size
+
+
+class PromptedWindowMSA(BaseModule):
     """Window based multi-head self-attention (W-MSA) module with relative
     position bias.
 
@@ -38,6 +110,7 @@ class WindowMSA(BaseModule):
     """
 
     def __init__(self,
+                 num_prompts, prompt_location,
                  embed_dims,
                  num_heads,
                  window_size,
@@ -48,6 +121,9 @@ class WindowMSA(BaseModule):
                  init_cfg=None):
 
         super().__init__()
+        self.num_prompts = num_prompts
+        self.prompt_location = prompt_location
+
         self.embed_dims = embed_dims
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
@@ -85,6 +161,7 @@ class WindowMSA(BaseModule):
             mask (tensor | None, Optional): mask with shape of (num_windows,
                 Wh*Ww, Wh*Ww), value should be between (-inf, 0].
         """
+        # nW*B, num_prompts + window_size*window_size, C
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads,
                                   C // self.num_heads).permute(2, 0, 3, 1, 4)
@@ -101,12 +178,41 @@ class WindowMSA(BaseModule):
                 -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(
             2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+
+        if self.prompt_location == "prepend":
+            # expand relative_position_bias
+            _C, _H, _W = relative_position_bias.shape
+
+            relative_position_bias = torch.cat((
+                torch.zeros(_C, self.num_prompts, _W, device=attn.device),
+                relative_position_bias
+                ), dim=1)
+            relative_position_bias = torch.cat((
+                torch.zeros(_C, _H + self.num_prompts, self.num_prompts, device=attn.device),
+                relative_position_bias
+                ), dim=-1)
+
         attn = attn + relative_position_bias.unsqueeze(0)
 
         if mask is not None:
+            # incorporate prompt
+            # mask: (nW, 49, 49) --> (nW, 49 + n_prompts, 49 + n_prompts)
             nW = mask.shape[0]
+
+            if self.prompt_location == "prepend":
+                # expand relative_position_bias
+                mask = torch.cat((
+                    torch.zeros(nW, self.num_prompts, _W, device=attn.device),
+                    mask), dim=1)
+                mask = torch.cat((
+                    torch.zeros(
+                        nW, _H + self.num_prompts, self.num_prompts,
+                        device=attn.device),
+                    mask), dim=-1)
+            # logger.info("before", attn.shape)
             attn = attn.view(B // nW, nW, self.num_heads, N,
                              N) + mask.unsqueeze(1).unsqueeze(0)
+            # logger.info("after", attn.shape)
             attn = attn.view(-1, self.num_heads, N, N)
         attn = self.softmax(attn)
 
@@ -124,7 +230,7 @@ class WindowMSA(BaseModule):
         return (seq1[:, None] + seq2[None, :]).reshape(1, -1)
 
 
-class ShiftWindowMSA(BaseModule):
+class PromptedShiftWindowMSA(BaseModule):
     """Shifted Window Multihead Self-Attention Module.
 
     Args:
@@ -164,7 +270,7 @@ class ShiftWindowMSA(BaseModule):
         self.shift_size = shift_size
         assert 0 <= self.shift_size < self.window_size
 
-        self.w_msa = WindowMSA(
+        self.w_msa = PromptedWindowMSA(
             embed_dims=embed_dims,
             num_heads=num_heads,
             window_size=to_2tuple(window_size),
@@ -177,9 +283,17 @@ class ShiftWindowMSA(BaseModule):
         self.drop = build_dropout(dropout_layer)
 
     def forward(self, query, hw_shape):
+        # query [B, H*W+num_prompts, C]
         B, L, C = query.shape
         H, W = hw_shape
+
+        if self.prompt_location == "prepend":
+            # change input size
+            prompt_emb = query[:, :self.num_prompts, :]
+            query = query[:, self.num_prompts:, :]
+            L = L - self.num_prompts
         assert L == H * W, 'input feature has wrong size'
+
         query = query.view(B, H, W, C)
 
         # pad feature maps to multiples of window size
@@ -227,7 +341,29 @@ class ShiftWindowMSA(BaseModule):
         query_windows = query_windows.view(-1, self.window_size**2, C)
 
         # W-MSA/SW-MSA (nW*B, window_size*window_size, C)
+
+        # add back the prompt for attn for parralel-based prompts
+        # nW*B, num_prompts + window_size*window_size, C
+        num_windows = int(query_windows.shape[0] / B)
+        if self.prompt_location == "prepend":
+            # expand prompts_embs
+            # B, num_prompts, C --> nW*B, num_prompts, C
+            prompt_emb = prompt_emb.unsqueeze(0)
+            prompt_emb = prompt_emb.expand(num_windows, -1, -1, -1)
+            prompt_emb = prompt_emb.reshape((-1, self.num_prompts, C))
+            query_windows = torch.cat((prompt_emb, query_windows), dim=1)
+
         attn_windows = self.w_msa(query_windows, mask=attn_mask)
+
+        # seperate prompt embs --> nW*B, num_prompts, C
+        if self.prompt_location == "prepend":
+            # change input size
+            prompt_emb = attn_windows[:, :self.num_prompts, :]
+            attn_windows = attn_windows[:, self.num_prompts:, :]
+            # change prompt_embs's shape:
+            # nW*B, num_prompts, C -> B, num_prompts, C
+            prompt_emb = prompt_emb.view(-1, B, self.num_prompts, C)
+            prompt_emb = prompt_emb.mean(0)
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size,
@@ -248,6 +384,10 @@ class ShiftWindowMSA(BaseModule):
             x = x[:, :H, :W, :].contiguous()
 
         x = x.view(B, H * W, C)
+
+        # add the prompt back:
+        if self.prompt_location == "prepend":
+            x = torch.cat((prompt_emb, x), dim=1)
 
         x = self.drop(x)
         return x
@@ -284,7 +424,7 @@ class ShiftWindowMSA(BaseModule):
         return windows
 
 
-class SwinBlock(BaseModule):
+class PromptedSwinBlock(BaseModule):
     """"
     Args:
         embed_dims (int): The feature dimension.
@@ -310,6 +450,8 @@ class SwinBlock(BaseModule):
     """
 
     def __init__(self,
+                 # prompt args
+                 num_prompts, prompt_location,
                  embed_dims,
                  num_heads,
                  feedforward_channels,
@@ -325,13 +467,19 @@ class SwinBlock(BaseModule):
                  with_cp=False,
                  init_cfg=None):
 
-        super(SwinBlock, self).__init__()
+        super(PromptedSwinBlock, self).__init__()
 
         self.init_cfg = init_cfg
         self.with_cp = with_cp
 
         self.norm1 = build_norm_layer(norm_cfg, embed_dims)[1]
-        self.attn = ShiftWindowMSA(
+
+        # prompt attributes
+        self.num_prompts = num_prompts
+        self.prompt_location = prompt_location
+        assert self.prompt_location == "prepend"
+        self.attn = PromptedShiftWindowMSA(
+            num_prompts, prompt_location,
             embed_dims=embed_dims,
             num_heads=num_heads,
             window_size=window_size,
@@ -377,7 +525,7 @@ class SwinBlock(BaseModule):
         return x
 
 
-class SwinBlockSequence(BaseModule):
+class PromptedSwinBlockSequence(BaseModule):
     """Implements one stage in Swin Transformer.
 
     Args:
@@ -421,7 +569,10 @@ class SwinBlockSequence(BaseModule):
                  act_cfg=dict(type='GELU'),
                  norm_cfg=dict(type='LN'),
                  with_cp=False,
-                 init_cfg=None):
+                 init_cfg=None,
+                 # add two more parameters for prompt
+                 num_prompts=None, prompt_location=None, deep_prompt=None,
+                 ):
         super().__init__(init_cfg=init_cfg)
 
         if isinstance(drop_path_rate, list):
@@ -431,6 +582,36 @@ class SwinBlockSequence(BaseModule):
             drop_path_rates = [deepcopy(drop_path_rate) for _ in range(depth)]
 
         self.blocks = ModuleList()
+
+        # if use visual prompts
+        if num_prompts is not None:
+            for i in range(depth):
+                block = PromptedSwinBlock(
+                    # extra args for prompt
+                    num_prompts, prompt_location,
+                    embed_dims=embed_dims,
+                    num_heads=num_heads,
+                    feedforward_channels=feedforward_channels,
+                    window_size=window_size,
+                    shift=False if i % 2 == 0 else True,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop_rate=drop_rate,
+                    attn_drop_rate=attn_drop_rate,
+                    drop_path_rate=drop_path_rates[i],
+                    act_cfg=act_cfg,
+                    norm_cfg=norm_cfg,
+                    with_cp=with_cp,
+                    init_cfg=None
+                    )
+                self.blocks.append(block)
+                # add related attributes
+                self.deep_prompt = deep_prompt
+                self.num_prompts = num_prompts
+                self.prompt_location = prompt_location
+                if self.deep_prompt and self.prompt_location != "prepend":
+                    raise ValueError("deep prompt mode for swin is only applicable to prepend")
+
         for i in range(depth):
             block = SwinBlock(
                 embed_dims=embed_dims,
@@ -449,9 +630,30 @@ class SwinBlockSequence(BaseModule):
                 init_cfg=None)
             self.blocks.append(block)
 
-        self.downsample = downsample
+        # adjust patch mergin layer
+        if downsample is not None:
+            if num_prompts is None:
+                self.downsample = downsample
+            else:
+                # downsample is PromptedPatchMerging(PatchMerging)
+                self.downsample = downsample
+                # add prompt related attributes
+                self.downsample.num_prompts = num_prompts
+                self.downsample.prompt_location = prompt_location
+                if prompt_location == "prepend":
+                    if not deep_prompt:
+                        self.downsample.prompt_upsampling = None
+                        # self.prompt_upsampling = nn.Linear(dim, 4 * dim, bias=False)
+                    else:
+                        self.downsample.prompt_upsampling = None
+        else:
+            self.downsample = None
+        # self.downsample = downsample
 
     def forward(self, x, hw_shape):
+        # only support shallow prompt
+        assert not self.deep_prompt
+
         for block in self.blocks:
             x = block(x, hw_shape)
 
@@ -463,7 +665,7 @@ class SwinBlockSequence(BaseModule):
 
 
 @BACKBONES.register_module()
-class SwinTransformer(BaseModule):
+class PromptedSwinTransformer(BaseModule):
     """ Swin Transformer
     A PyTorch implement of : `Swin Transformer:
     Hierarchical Vision Transformer using Shifted Windows`  -
@@ -521,6 +723,7 @@ class SwinTransformer(BaseModule):
     """
 
     def __init__(self,
+                 prompt_config=None,
                  pretrain_img_size=224,
                  in_channels=3,
                  embed_dims=96,
@@ -567,7 +770,7 @@ class SwinTransformer(BaseModule):
         else:
             raise TypeError('pretrained must be a str or None')
 
-        super(SwinTransformer, self).__init__(init_cfg=init_cfg)
+        super(PromptedSwinTransformer, self).__init__(init_cfg=init_cfg)
 
         num_layers = len(depths)
         self.out_indices = out_indices
@@ -599,11 +802,20 @@ class SwinTransformer(BaseModule):
             x.item() for x in torch.linspace(0, drop_path_rate, total_depth)
         ]
 
+        # prompt related attributes
+        self.prompt_config = prompt_config
+        img_size = to_2tuple(pretrain_img_size)
+        patch_size = to_2tuple(patch_size)
+        num_tokens = self.prompt_config.num_tokens
+
+        self.prompt_dropout = Dropout(self.prompt_config.dropout)
+        self.prompt_proj = nn.Identity()
+
         self.stages = ModuleList()
         in_channels = embed_dims
         for i in range(num_layers):
             if i < num_layers - 1:
-                downsample = PatchMerging(
+                downsample = PromptedPatchMerging(
                     in_channels=in_channels,
                     out_channels=2 * in_channels,
                     stride=strides[i + 1],
@@ -612,7 +824,7 @@ class SwinTransformer(BaseModule):
             else:
                 downsample = None
 
-            stage = SwinBlockSequence(
+            stage = PromptedSwinBlockSequence(
                 embed_dims=in_channels,
                 num_heads=num_heads[i],
                 feedforward_channels=mlp_ratio * in_channels,
@@ -627,7 +839,11 @@ class SwinTransformer(BaseModule):
                 act_cfg=act_cfg,
                 norm_cfg=norm_cfg,
                 with_cp=with_cp,
-                init_cfg=None)
+                init_cfg=None,
+                num_prompts=num_tokens,
+                prompt_location=self.prompt_config.location,
+                deep_prompt=self.prompt_config.deep,
+            )
             self.stages.append(stage)
             if downsample:
                 in_channels = downsample.out_channels
@@ -639,9 +855,25 @@ class SwinTransformer(BaseModule):
             layer_name = f'norm{i}'
             self.add_module(layer_name, layer)
 
+        # init prompts
+        embed_dims
+        if self.prompt_config.INITIATION == "random":
+            val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + embed_dims))  # noqa
+
+            assert self.prompt_config.location == 'prepend'
+            # for "prepend"
+            self.prompt_embeddings = nn.Parameter(torch.zeros(
+                1, num_tokens, embed_dims))
+            nn.init.uniform_(self.prompt_embeddings.data, -val, val)
+
+            assert not self.prompt_config.DEEP
+
+        else:
+            raise ValueError("Other initiation scheme is not supported")
+
     def train(self, mode=True):
         """Convert the model into training mode while keep layers freezed."""
-        super(SwinTransformer, self).train(mode)
+        super(PromptedSwinTransformer, self).train(mode)
         self._freeze_stages()
 
     def _freeze_stages(self):
@@ -741,12 +973,83 @@ class SwinTransformer(BaseModule):
             # load state_dict
             self.load_state_dict(state_dict, False)
 
+    def incorporate_prompt(self, x):
+        # combine prompt embeddings with image-patch embeddings
+        B = x.shape[0]
+
+        if self.prompt_config.location == "prepend":
+            # after CLS token, all before image patches
+            x = self.get_patch_embeddings(x)  # (batch_size, n_patches, hidden_dim)
+            prompt_embd = self.prompt_dropout(
+                self.prompt_embeddings.expand(B, -1, -1))
+            x = torch.cat((
+                prompt_embd, x
+            ), dim=1)
+            # (batch_size, n_prompt + n_patches, hidden_dim)
+
+        elif self.prompt_config.LOCATION == "add":
+            # add to the input patches + CLS
+            # assert self.prompt_config.NUM_TOKENS == x.shape[1]
+            x = self.get_patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim)
+            x = x + self.prompt_dropout(
+                self.prompt_embeddings.expand(B, -1, -1))
+            # (batch_size, n_patches, hidden_dim)
+
+        elif self.prompt_config.LOCATION == "add-1":
+            x = self.get_patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim)
+            L = x.shape[1]
+            prompt_emb = self.prompt_dropout(
+                self.prompt_embeddings.expand(B, -1, -1))
+            x = x + prompt_emb.expand(-1, L, -1)
+            # (batch_size, cls_token + n_patches, hidden_dim)
+
+        elif self.prompt_config.LOCATION == "pad":
+            prompt_emb_lr = self.prompt_norm(
+                self.prompt_embeddings_lr).expand(B, -1, -1, -1)
+            prompt_emb_tb = self.prompt_norm(
+                self.prompt_embeddings_tb).expand(B, -1, -1, -1)
+
+            x = torch.cat((
+                prompt_emb_lr[:, :, :, :self.num_tokens],
+                x, prompt_emb_lr[:, :, :, self.num_tokens:]
+            ), dim=-1)
+            x = torch.cat((
+                prompt_emb_tb[:, :, :self.num_tokens, :],
+                x, prompt_emb_tb[:, :, self.num_tokens:, :]
+            ), dim=-2)
+            x = self.get_patch_embeddings(x)  # (batch_size, n_patches, hidden_dim)
+
+        elif self.prompt_config.LOCATION == "below":
+            # (batch, 3, height, width)
+            x = torch.cat((
+                x,
+                self.prompt_norm(
+                    self.prompt_embeddings).expand(B, -1, -1, -1),
+            ), dim=1)
+            x = self.get_patch_embeddings(x)
+            # (batch_size, n_patches, hidden_dim)
+        else:
+            raise ValueError("Other prompt locations are not supported")
+
+        return x
+
+
     def forward(self, x):
         x, hw_shape = self.patch_embed(x)
 
         if self.use_abs_pos_embed:
             x = x + self.absolute_pos_embed
         x = self.drop_after_pos(x)
+
+        assert self.prompt_config.location == "prepend"
+        B = x.shape[0]
+        # x -> (batch_size, n_patches, hidden_dim)
+        prompt_embd = self.prompt_dropout(
+            self.prompt_embeddings.expand(B, -1, -1))
+        x = torch.cat((
+            prompt_embd, x
+        ), dim=1)
+        # (batch_size, n_prompt + n_patches, hidden_dim)
 
         outs = []
         for i, stage in enumerate(self.stages):
