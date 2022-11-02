@@ -1,10 +1,13 @@
 import warnings
+import math
+from functools import reduce
+from operator import mul
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Sequence
 import torch
 import torch.nn as nn
-from torch.nn import Conv2d, Dropout
+from torch.nn import Dropout
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmcv.cnn import build_norm_layer, constant_init, trunc_normal_init
@@ -254,6 +257,7 @@ class PromptedShiftWindowMSA(BaseModule):
     """
 
     def __init__(self,
+                 num_prompts, prompt_location,
                  embed_dims,
                  num_heads,
                  window_size,
@@ -266,11 +270,15 @@ class PromptedShiftWindowMSA(BaseModule):
                  init_cfg=None):
         super().__init__(init_cfg)
 
+        self.prompt_location = prompt_location
+        self.num_prompts = num_prompts
+
         self.window_size = window_size
         self.shift_size = shift_size
         assert 0 <= self.shift_size < self.window_size
 
         self.w_msa = PromptedWindowMSA(
+            num_prompts, prompt_location,
             embed_dims=embed_dims,
             num_heads=num_heads,
             window_size=to_2tuple(window_size),
@@ -612,23 +620,23 @@ class PromptedSwinBlockSequence(BaseModule):
                 if self.deep_prompt and self.prompt_location != "prepend":
                     raise ValueError("deep prompt mode for swin is only applicable to prepend")
 
-        for i in range(depth):
-            block = SwinBlock(
-                embed_dims=embed_dims,
-                num_heads=num_heads,
-                feedforward_channels=feedforward_channels,
-                window_size=window_size,
-                shift=False if i % 2 == 0 else True,
-                qkv_bias=qkv_bias,
-                qk_scale=qk_scale,
-                drop_rate=drop_rate,
-                attn_drop_rate=attn_drop_rate,
-                drop_path_rate=drop_path_rates[i],
-                act_cfg=act_cfg,
-                norm_cfg=norm_cfg,
-                with_cp=with_cp,
-                init_cfg=None)
-            self.blocks.append(block)
+        # for i in range(depth):
+        #     block = PromptedSwinBlock(
+        #         embed_dims=embed_dims,
+        #         num_heads=num_heads,
+        #         feedforward_channels=feedforward_channels,
+        #         window_size=window_size,
+        #         shift=False if i % 2 == 0 else True,
+        #         qkv_bias=qkv_bias,
+        #         qk_scale=qk_scale,
+        #         drop_rate=drop_rate,
+        #         attn_drop_rate=attn_drop_rate,
+        #         drop_path_rate=drop_path_rates[i],
+        #         act_cfg=act_cfg,
+        #         norm_cfg=norm_cfg,
+        #         with_cp=with_cp,
+        #         init_cfg=None)
+        #     self.blocks.append(block)
 
         # adjust patch mergin layer
         if downsample is not None:
@@ -748,11 +756,7 @@ class PromptedSwinTransformer(BaseModule):
                  frozen_stages=-1,
                  init_cfg=None,
                  # prompt_args
-                 prompt_num_tokens=5,
-                 prompt_location='prepend',
-                 prompt_deep=False,
-                 prompt_dropout=0.,
-                 prompt_initiation='random',
+                 prompt_cfg=None,
                  ):
         self.convert_weights = convert_weights
         self.frozen_stages = frozen_stages
@@ -810,11 +814,12 @@ class PromptedSwinTransformer(BaseModule):
 
         # prompt related attributes
         patch_size = to_2tuple(patch_size)
-        self.prompt_num_tokens=prompt_num_tokens
-        self.prompt_location=prompt_location
-        self.prompt_deep=prompt_deep
-        self.prompt_dropout=prompt_dropout
-        self.prompt_initiation=prompt_initiation
+        self.prompt_cfg = prompt_cfg
+        self.prompt_num_tokens = prompt_cfg.num_tokens
+        self.prompt_location = prompt_cfg.location
+        self.prompt_deep = prompt_cfg.deep
+        self.prompt_dropout = prompt_cfg.dropout
+        self.prompt_initiation = prompt_cfg.initiation
 
         self.prompt_dropout = Dropout(self.prompt_dropout)
         self.prompt_proj = nn.Identity()
@@ -870,7 +875,7 @@ class PromptedSwinTransformer(BaseModule):
             assert self.prompt_location == 'prepend'
             # for "prepend"
             self.prompt_embeddings = nn.Parameter(torch.zeros(
-                1, num_tokens, embed_dims))
+                1, self.prompt_num_tokens, embed_dims))
             nn.init.uniform_(self.prompt_embeddings.data, -val, val)
 
             assert not self.prompt_deep
@@ -1021,6 +1026,8 @@ class PromptedSwinTransformer(BaseModule):
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')
                 out = norm_layer(out)
+                # remove prompts
+                out = out[:, self.prompt_num_tokens:, :]
                 out = out.view(-1, *out_hw_shape,
                                self.num_features[i]).permute(0, 3, 1,
                                                              2).contiguous()

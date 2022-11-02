@@ -26,11 +26,13 @@ model = dict(
         with_cp=False,
         convert_weights=True,
         init_cfg=dict(type='Pretrained', checkpoint=pretrained),
-        prompt_num_tokens=5,
-        prompt_location='prepend',
-        prompt_deep=False,
-        prompt_dropout=0.,
-        prompt_initiation='random',
+        prompt_cfg=dict(
+            num_tokens=5,
+            location='prepend',
+            deep=False,
+            dropout=0.,
+            initiation='random',
+        )
     ),
     neck=dict(in_channels=[96, 192, 384, 768]))
 )
