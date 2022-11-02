@@ -747,7 +747,12 @@ class PromptedSwinTransformer(BaseModule):
                  convert_weights=False,
                  frozen_stages=-1,
                  init_cfg=None,
-                 prompt_cfg=None,
+                 # prompt_args
+                 prompt_num_tokens=5,
+                 prompt_location='prepend',
+                 prompt_deep=False,
+                 prompt_dropout=0.,
+                 prompt_initiation='random',
                  ):
         self.convert_weights = convert_weights
         self.frozen_stages = frozen_stages
@@ -804,12 +809,14 @@ class PromptedSwinTransformer(BaseModule):
         ]
 
         # prompt related attributes
-        self.prompt_cfg = prompt_cfg
-        img_size = to_2tuple(pretrain_img_size)
         patch_size = to_2tuple(patch_size)
-        num_tokens = self.prompt_cfg.num_tokens
+        self.prompt_num_tokens=prompt_num_tokens
+        self.prompt_location=prompt_location
+        self.prompt_deep=prompt_deep
+        self.prompt_dropout=prompt_dropout
+        self.prompt_initiation=prompt_initiation
 
-        self.prompt_dropout = Dropout(self.prompt_cfg.dropout)
+        self.prompt_dropout = Dropout(self.prompt_dropout)
         self.prompt_proj = nn.Identity()
 
         self.stages = ModuleList()
@@ -841,9 +848,9 @@ class PromptedSwinTransformer(BaseModule):
                 norm_cfg=norm_cfg,
                 with_cp=with_cp,
                 init_cfg=None,
-                num_prompts=num_tokens,
-                prompt_location=self.prompt_cfg.location,
-                deep_prompt=self.prompt_cfg.deep,
+                num_prompts=self.prompt_num_tokens,
+                prompt_location=self.prompt_location,
+                deep_prompt=self.prompt_deep,
             )
             self.stages.append(stage)
             if downsample:
@@ -857,16 +864,16 @@ class PromptedSwinTransformer(BaseModule):
             self.add_module(layer_name, layer)
 
         # init prompts
-        if self.prompt_cfg.initiation == "random":
+        if self.prompt_initiation == "random":
             val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + embed_dims))  # noqa
 
-            assert self.prompt_cfg.location == 'prepend'
+            assert self.prompt_location == 'prepend'
             # for "prepend"
             self.prompt_embeddings = nn.Parameter(torch.zeros(
                 1, num_tokens, embed_dims))
             nn.init.uniform_(self.prompt_embeddings.data, -val, val)
 
-            assert not self.prompt_cfg.deep
+            assert not self.prompt_deep
 
         else:
             raise ValueError("Other initiation scheme is not supported")
@@ -977,7 +984,7 @@ class PromptedSwinTransformer(BaseModule):
         # combine prompt embeddings with image-patch embeddings
         B = x.shape[0]
 
-        if self.prompt_cfg.location == "prepend":
+        if self.prompt_location == "prepend":
             # after CLS token, all before image patches
             x = self.get_patch_embeddings(x)  # (batch_size, n_patches, hidden_dim)
             prompt_embd = self.prompt_dropout(
@@ -998,7 +1005,7 @@ class PromptedSwinTransformer(BaseModule):
             x = x + self.absolute_pos_embed
         x = self.drop_after_pos(x)
 
-        assert self.prompt_cfg.location == "prepend"
+        assert self.prompt_location == "prepend"
         B = x.shape[0]
         # x -> (batch_size, n_patches, hidden_dim)
         prompt_embd = self.prompt_dropout(
