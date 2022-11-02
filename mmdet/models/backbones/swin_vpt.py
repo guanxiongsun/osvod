@@ -723,7 +723,6 @@ class PromptedSwinTransformer(BaseModule):
     """
 
     def __init__(self,
-                 prompt_config=None,
                  pretrain_img_size=224,
                  in_channels=3,
                  embed_dims=96,
@@ -747,7 +746,9 @@ class PromptedSwinTransformer(BaseModule):
                  pretrained=None,
                  convert_weights=False,
                  frozen_stages=-1,
-                 init_cfg=None):
+                 init_cfg=None,
+                 prompt_config=None,
+                 ):
         self.convert_weights = convert_weights
         self.frozen_stages = frozen_stages
         if isinstance(pretrain_img_size, int):

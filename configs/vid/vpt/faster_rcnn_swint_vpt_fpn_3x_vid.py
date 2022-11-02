@@ -18,7 +18,6 @@ model = dict(
     backbone=dict(
         _delete_=True,
         type='PromptedSwinTransformer',
-        prompt_config=prompt_dict,
         embed_dims=96,
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 24],
@@ -33,7 +32,9 @@ model = dict(
         out_indices=(0, 1, 2, 3),
         with_cp=False,
         convert_weights=True,
-        init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
+        init_cfg=dict(type='Pretrained', checkpoint=pretrained),
+        prompt_config=prompt_dict,
+    ),
     neck=dict(in_channels=[96, 192, 384, 768]))
 )
 
