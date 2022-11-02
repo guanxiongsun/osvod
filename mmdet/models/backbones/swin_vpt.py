@@ -128,7 +128,7 @@ class PromptedWindowMSA(BaseModule):
         self.window_size = window_size  # Wh, Ww
         self.num_heads = num_heads
         head_embed_dims = embed_dims // num_heads
-        self.scale = qk_scale or head_embed_dims**-0.5
+        self.scale = qk_scale or head_embed_dims ** -0.5
         self.init_cfg = init_cfg
 
         # define a parameter table of relative position bias
@@ -173,9 +173,9 @@ class PromptedWindowMSA(BaseModule):
 
         relative_position_bias = self.relative_position_bias_table[
             self.relative_position_index.view(-1)].view(
-                self.window_size[0] * self.window_size[1],
-                self.window_size[0] * self.window_size[1],
-                -1)  # Wh*Ww,Wh*Ww,nH
+            self.window_size[0] * self.window_size[1],
+            self.window_size[0] * self.window_size[1],
+            -1)  # Wh*Ww,Wh*Ww,nH
         relative_position_bias = relative_position_bias.permute(
             2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
 
@@ -186,11 +186,11 @@ class PromptedWindowMSA(BaseModule):
             relative_position_bias = torch.cat((
                 torch.zeros(_C, self.num_prompts, _W, device=attn.device),
                 relative_position_bias
-                ), dim=1)
+            ), dim=1)
             relative_position_bias = torch.cat((
                 torch.zeros(_C, _H + self.num_prompts, self.num_prompts, device=attn.device),
                 relative_position_bias
-                ), dim=-1)
+            ), dim=-1)
 
         attn = attn + relative_position_bias.unsqueeze(0)
 
@@ -330,7 +330,7 @@ class PromptedShiftWindowMSA(BaseModule):
             attn_mask = mask_windows.unsqueeze(1) - mask_windows.unsqueeze(2)
             attn_mask = attn_mask.masked_fill(attn_mask != 0,
                                               float(-100.0)).masked_fill(
-                                                  attn_mask == 0, float(0.0))
+                attn_mask == 0, float(0.0))
         else:
             shifted_query = query
             attn_mask = None
@@ -338,7 +338,7 @@ class PromptedShiftWindowMSA(BaseModule):
         # nW*B, window_size, window_size, C
         query_windows = self.window_partition(shifted_query)
         # nW*B, window_size*window_size, C
-        query_windows = query_windows.view(-1, self.window_size**2, C)
+        query_windows = query_windows.view(-1, self.window_size ** 2, C)
 
         # W-MSA/SW-MSA (nW*B, window_size*window_size, C)
 
@@ -603,7 +603,7 @@ class PromptedSwinBlockSequence(BaseModule):
                     norm_cfg=norm_cfg,
                     with_cp=with_cp,
                     init_cfg=None
-                    )
+                )
                 self.blocks.append(block)
                 # add related attributes
                 self.deep_prompt = deep_prompt
@@ -747,7 +747,7 @@ class PromptedSwinTransformer(BaseModule):
                  convert_weights=False,
                  frozen_stages=-1,
                  init_cfg=None,
-                 prompt_config=None,
+                 prompt_cfg=None,
                  ):
         self.convert_weights = convert_weights
         self.frozen_stages = frozen_stages
@@ -804,12 +804,12 @@ class PromptedSwinTransformer(BaseModule):
         ]
 
         # prompt related attributes
-        self.prompt_config = prompt_config
+        self.prompt_cfg = prompt_cfg
         img_size = to_2tuple(pretrain_img_size)
         patch_size = to_2tuple(patch_size)
-        num_tokens = self.prompt_config.num_tokens
+        num_tokens = self.prompt_cfg.num_tokens
 
-        self.prompt_dropout = Dropout(self.prompt_config.dropout)
+        self.prompt_dropout = Dropout(self.prompt_cfg.dropout)
         self.prompt_proj = nn.Identity()
 
         self.stages = ModuleList()
@@ -842,14 +842,14 @@ class PromptedSwinTransformer(BaseModule):
                 with_cp=with_cp,
                 init_cfg=None,
                 num_prompts=num_tokens,
-                prompt_location=self.prompt_config.location,
-                deep_prompt=self.prompt_config.deep,
+                prompt_location=self.prompt_cfg.location,
+                deep_prompt=self.prompt_cfg.deep,
             )
             self.stages.append(stage)
             if downsample:
                 in_channels = downsample.out_channels
 
-        self.num_features = [int(embed_dims * 2**i) for i in range(num_layers)]
+        self.num_features = [int(embed_dims * 2 ** i) for i in range(num_layers)]
         # Add a norm layer for each output
         for i in out_indices:
             layer = build_norm_layer(norm_cfg, self.num_features[i])[1]
@@ -857,17 +857,16 @@ class PromptedSwinTransformer(BaseModule):
             self.add_module(layer_name, layer)
 
         # init prompts
-        embed_dims
-        if self.prompt_config.INITIATION == "random":
+        if self.prompt_cfg.initiation == "random":
             val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + embed_dims))  # noqa
 
-            assert self.prompt_config.location == 'prepend'
+            assert self.prompt_cfg.location == 'prepend'
             # for "prepend"
             self.prompt_embeddings = nn.Parameter(torch.zeros(
                 1, num_tokens, embed_dims))
             nn.init.uniform_(self.prompt_embeddings.data, -val, val)
 
-            assert not self.prompt_config.DEEP
+            assert not self.prompt_cfg.deep
 
         else:
             raise ValueError("Other initiation scheme is not supported")
@@ -889,7 +888,7 @@ class PromptedSwinTransformer(BaseModule):
         for i in range(1, self.frozen_stages + 1):
 
             if (i - 1) in self.out_indices:
-                norm_layer = getattr(self, f'norm{i-1}')
+                norm_layer = getattr(self, f'norm{i - 1}')
                 norm_layer.eval()
                 for param in norm_layer.parameters():
                     param.requires_grad = False
@@ -962,8 +961,8 @@ class PromptedSwinTransformer(BaseModule):
                 if nH1 != nH2:
                     logger.warning(f'Error in loading {table_key}, pass')
                 elif L1 != L2:
-                    S1 = int(L1**0.5)
-                    S2 = int(L2**0.5)
+                    S1 = int(L1 ** 0.5)
+                    S2 = int(L2 ** 0.5)
                     table_pretrained_resized = F.interpolate(
                         table_pretrained.permute(1, 0).reshape(1, nH1, S1, S1),
                         size=(S2, S2),
@@ -978,7 +977,7 @@ class PromptedSwinTransformer(BaseModule):
         # combine prompt embeddings with image-patch embeddings
         B = x.shape[0]
 
-        if self.prompt_config.location == "prepend":
+        if self.prompt_cfg.location == "prepend":
             # after CLS token, all before image patches
             x = self.get_patch_embeddings(x)  # (batch_size, n_patches, hidden_dim)
             prompt_embd = self.prompt_dropout(
@@ -987,53 +986,10 @@ class PromptedSwinTransformer(BaseModule):
                 prompt_embd, x
             ), dim=1)
             # (batch_size, n_prompt + n_patches, hidden_dim)
-
-        elif self.prompt_config.LOCATION == "add":
-            # add to the input patches + CLS
-            # assert self.prompt_config.NUM_TOKENS == x.shape[1]
-            x = self.get_patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim)
-            x = x + self.prompt_dropout(
-                self.prompt_embeddings.expand(B, -1, -1))
-            # (batch_size, n_patches, hidden_dim)
-
-        elif self.prompt_config.LOCATION == "add-1":
-            x = self.get_patch_embeddings(x)  # (batch_size, 1 + n_patches, hidden_dim)
-            L = x.shape[1]
-            prompt_emb = self.prompt_dropout(
-                self.prompt_embeddings.expand(B, -1, -1))
-            x = x + prompt_emb.expand(-1, L, -1)
-            # (batch_size, cls_token + n_patches, hidden_dim)
-
-        elif self.prompt_config.LOCATION == "pad":
-            prompt_emb_lr = self.prompt_norm(
-                self.prompt_embeddings_lr).expand(B, -1, -1, -1)
-            prompt_emb_tb = self.prompt_norm(
-                self.prompt_embeddings_tb).expand(B, -1, -1, -1)
-
-            x = torch.cat((
-                prompt_emb_lr[:, :, :, :self.num_tokens],
-                x, prompt_emb_lr[:, :, :, self.num_tokens:]
-            ), dim=-1)
-            x = torch.cat((
-                prompt_emb_tb[:, :, :self.num_tokens, :],
-                x, prompt_emb_tb[:, :, self.num_tokens:, :]
-            ), dim=-2)
-            x = self.get_patch_embeddings(x)  # (batch_size, n_patches, hidden_dim)
-
-        elif self.prompt_config.LOCATION == "below":
-            # (batch, 3, height, width)
-            x = torch.cat((
-                x,
-                self.prompt_norm(
-                    self.prompt_embeddings).expand(B, -1, -1, -1),
-            ), dim=1)
-            x = self.get_patch_embeddings(x)
-            # (batch_size, n_patches, hidden_dim)
         else:
             raise ValueError("Other prompt locations are not supported")
 
         return x
-
 
     def forward(self, x):
         x, hw_shape = self.patch_embed(x)
@@ -1042,7 +998,7 @@ class PromptedSwinTransformer(BaseModule):
             x = x + self.absolute_pos_embed
         x = self.drop_after_pos(x)
 
-        assert self.prompt_config.location == "prepend"
+        assert self.prompt_cfg.location == "prepend"
         B = x.shape[0]
         # x -> (batch_size, n_patches, hidden_dim)
         prompt_embd = self.prompt_dropout(

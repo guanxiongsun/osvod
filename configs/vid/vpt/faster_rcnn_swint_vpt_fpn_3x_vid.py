@@ -6,13 +6,6 @@ _base_ = [
 ]
 pretrained = 'https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_tiny_patch4_window7_224.pth'  # noqa
 
-prompt_dict = dict(
-    num_tokens=5,
-    location='prepend',
-    deep=False,
-    dropout=0.,
-)
-
 model = dict(
     detector=dict(
     backbone=dict(
@@ -33,7 +26,13 @@ model = dict(
         with_cp=False,
         convert_weights=True,
         init_cfg=dict(type='Pretrained', checkpoint=pretrained),
-        prompt_config=prompt_dict,
+        prompt_cfg=dict(
+            num_tokens=5,
+            location='prepend',
+            deep=False,
+            dropout=0.,
+            initiation='random',
+        ),
     ),
     neck=dict(in_channels=[96, 192, 384, 768]))
 )
