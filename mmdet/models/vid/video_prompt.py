@@ -4,13 +4,14 @@ import warnings
 import torch
 from addict import Dict
 from mmdet.models import build_detector
+from mmdet.models.predictors.attention_predictor import AttentionPredictor
 
 from ..builder import MODELS
 from .base import BaseVideoDetector
 
 
 @MODELS.register_module()
-class SELSA(BaseVideoDetector):
+class VideoPrompt(BaseVideoDetector):
     """Sequence Level Semantics Aggregation for Video Object Detection.
 
     This video object detector is the implementation of `SELSA
@@ -24,7 +25,7 @@ class SELSA(BaseVideoDetector):
                  frozen_modules=None,
                  train_cfg=None,
                  test_cfg=None):
-        super(SELSA, self).__init__(init_cfg)
+        super(VideoPrompt, self).__init__(init_cfg)
         if isinstance(pretrained, dict):
             warnings.warn('DeprecationWarning: pretrained is deprecated, '
                           'please use "init_cfg" instead')
@@ -40,11 +41,22 @@ class SELSA(BaseVideoDetector):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
-
-
+        # create prompt predict network
+        self.prompt_predictor = AttentionPredictor(768)
 
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
+
+    @staticmethod
+    def get_topk(x, k=100):
+        # x [B, N, C]
+        result = []
+        for feat in x:
+            l1 = feat.norm(1, dim=-1)
+            _, inds = l1.topk(k)
+            result.append(feat[inds])
+
+        return torch.cat(result)
 
     def forward_train(self,
                       img,
@@ -135,16 +147,21 @@ class SELSA(BaseVideoDetector):
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
-        all_imgs = torch.cat((img, ref_img[0]), dim=0)
-        all_x = self.detector.extract_feat(all_imgs)
-        x = []
-        ref_x = []
-        for i in range(len(all_x)):
-            x.append(all_x[i][[0]])
-            ref_x.append(all_x[i][1:])
+        # [B, C, H, W]
+        ref_x = self.detector.backbone(ref_img[0])[-1]
+        # [B*K, C]
+        B, C, H, W = ref_x.shape
+        ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
+        ref_x = self.get_topk(ref_x)
+
+        # [num_prompt, C]
+        prompt = self.prompt_predictor(ref_x)
+
+        x = self.detector.backbone(img, prompt)
+        if self.detector.with_neck:
+            x = self.detector.neck(x)
 
         losses = dict()
-
         # RPN forward and loss
         if self.detector.with_rpn:
             proposal_cfg = self.detector.train_cfg.get(
@@ -158,15 +175,13 @@ class SELSA(BaseVideoDetector):
                 proposal_cfg=proposal_cfg)
             losses.update(rpn_losses)
 
-            ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
-                ref_x, ref_img_metas[0])
         else:
             proposal_list = proposals
-            ref_proposals_list = ref_proposals
 
-        roi_losses = self.detector.roi_head.forward_train(
-            x, ref_x, img_metas, proposal_list, ref_proposals_list, gt_bboxes,
-            gt_labels, gt_bboxes_ignore, gt_masks, **kwargs)
+        roi_losses = self.detector.roi_head.forward_train(x, img_metas, proposal_list,
+                                                          gt_bboxes, gt_labels,
+                                                          gt_bboxes_ignore, gt_masks,
+                                                          **kwargs)
         losses.update(roi_losses)
 
         return losses

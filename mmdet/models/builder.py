@@ -17,6 +17,8 @@ DETECTORS = MODELS
 AGGREGATORS = MODELS
 # for memory
 MEMORY = MODELS
+# for prompt predictor
+PREDICTORS = MODELS
 
 
 def build_backbone(cfg):
@@ -57,6 +59,10 @@ def build_loss(cfg):
 def build_aggregator(cfg):
     """Build aggregator model"""
     return AGGREGATORS.build(cfg)
+
+
+def build_predictor(cfg):
+    return PREDICTORS.build(cfg)
 
 
 def build_detector(cfg, train_cfg=None, test_cfg=None):

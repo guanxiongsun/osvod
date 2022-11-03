@@ -8,6 +8,8 @@ from .builder import (BACKBONES, DETECTORS, HEADS, LOSSES, NECKS,
                       build_model, build_aggregator, AGGREGATORS,
                       # for memory
                       build_memory,
+                      # for predictor
+                      PREDICTORS, build_predictor,
                       )
 from .dense_heads import *  # noqa: F401,F403
 from .detectors import *  # noqa: F401,F403
@@ -30,4 +32,5 @@ __all__ = [
     'build_model', 'SELSA', 'AGGREGATORS', 'build_aggregator',
     # build memory
     'build_memory', 'FCOSAtt', 'MPN', 'CenterNetAtt',
+    'PREDICTORS', 'build_predictor',
 ]

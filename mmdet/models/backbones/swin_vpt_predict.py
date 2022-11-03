@@ -54,12 +54,20 @@ class PromptedPatchMerging(PatchMerging):
 
         H, W = input_size
 
-        if self.prompt_location == "prepend":
-            # change input size
-            prompt_emb = x[:, :self.num_prompts, :]
-            x = x[:, self.num_prompts:, :]
-            L = L - self.num_prompts
-            prompt_emb = self.upsample_prompt(prompt_emb)
+        if H*W == L:
+            _with_prompt = False
+        elif H*W+self.num_prompts == L:
+            _with_prompt = True
+        else:
+            raise ValueError
+
+        if _with_prompt:
+            if self.prompt_location == "prepend":
+                # change input size
+                prompt_emb = x[:, :self.num_prompts, :]
+                x = x[:, self.num_prompts:, :]
+                L = L - self.num_prompts
+                prompt_emb = self.upsample_prompt(prompt_emb)
 
         assert L == H * W, 'input feature has wrong size'
 
@@ -84,9 +92,10 @@ class PromptedPatchMerging(PatchMerging):
         output_size = (out_h, out_w)
         x = x.transpose(1, 2)  # B, H/2*W/2, 4*C
 
-        # add the prompt back:
-        if self.prompt_location == "prepend":
-            x = torch.cat((prompt_emb, x), dim=1)
+        if _with_prompt:
+            # add the prompt back:
+            if self.prompt_location == "prepend":
+                x = torch.cat((prompt_emb, x), dim=1)
 
         x = self.norm(x) if self.norm else x
         x = self.reduction(x)
@@ -156,7 +165,7 @@ class PromptedWindowMSA(BaseModule):
     def init_weights(self):
         trunc_normal_(self.relative_position_bias_table, std=0.02)
 
-    def forward(self, x, mask=None):
+    def forward(self, x, mask=None, with_prompt=None):
         """
         Args:
 
@@ -182,18 +191,19 @@ class PromptedWindowMSA(BaseModule):
         relative_position_bias = relative_position_bias.permute(
             2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
 
-        if self.prompt_location == "prepend":
-            # expand relative_position_bias
-            _C, _H, _W = relative_position_bias.shape
+        if with_prompt:
+            if self.prompt_location == "prepend":
+                # expand relative_position_bias
+                _C, _H, _W = relative_position_bias.shape
 
-            relative_position_bias = torch.cat((
-                torch.zeros(_C, self.num_prompts, _W, device=attn.device),
-                relative_position_bias
-            ), dim=1)
-            relative_position_bias = torch.cat((
-                torch.zeros(_C, _H + self.num_prompts, self.num_prompts, device=attn.device),
-                relative_position_bias
-            ), dim=-1)
+                relative_position_bias = torch.cat((
+                    torch.zeros(_C, self.num_prompts, _W, device=attn.device),
+                    relative_position_bias
+                ), dim=1)
+                relative_position_bias = torch.cat((
+                    torch.zeros(_C, _H + self.num_prompts, self.num_prompts, device=attn.device),
+                    relative_position_bias
+                ), dim=-1)
 
         attn = attn + relative_position_bias.unsqueeze(0)
 
@@ -202,16 +212,17 @@ class PromptedWindowMSA(BaseModule):
             # mask: (nW, 49, 49) --> (nW, 49 + n_prompts, 49 + n_prompts)
             nW = mask.shape[0]
 
-            if self.prompt_location == "prepend":
-                # expand relative_position_bias
-                mask = torch.cat((
-                    torch.zeros(nW, self.num_prompts, _W, device=attn.device),
-                    mask), dim=1)
-                mask = torch.cat((
-                    torch.zeros(
-                        nW, _H + self.num_prompts, self.num_prompts,
-                        device=attn.device),
-                    mask), dim=-1)
+            if with_prompt:
+                if self.prompt_location == "prepend":
+                    # expand relative_position_bias
+                    mask = torch.cat((
+                        torch.zeros(nW, self.num_prompts, _W, device=attn.device),
+                        mask), dim=1)
+                    mask = torch.cat((
+                        torch.zeros(
+                            nW, _H + self.num_prompts, self.num_prompts,
+                            device=attn.device),
+                        mask), dim=-1)
             # logger.info("before", attn.shape)
             attn = attn.view(B // nW, nW, self.num_heads, N,
                              N) + mask.unsqueeze(1).unsqueeze(0)
@@ -295,11 +306,21 @@ class PromptedShiftWindowMSA(BaseModule):
         B, L, C = query.shape
         H, W = hw_shape
 
-        if self.prompt_location == "prepend":
-            # change input size
-            prompt_emb = query[:, :self.num_prompts, :]
-            query = query[:, self.num_prompts:, :]
-            L = L - self.num_prompts
+        if H*W == L:
+            # forward w.o prompt
+            _with_prompt = False
+        elif H*W+self.num_prompts == L:
+            _with_prompt = True
+        else:
+            raise ValueError
+
+        if _with_prompt:
+            if self.prompt_location == "prepend":
+                # change input size
+                prompt_emb = query[:, :self.num_prompts, :]
+                query = query[:, self.num_prompts:, :]
+                L = L - self.num_prompts
+
         assert L == H * W, 'input feature has wrong size'
 
         query = query.view(B, H, W, C)
@@ -353,25 +374,28 @@ class PromptedShiftWindowMSA(BaseModule):
         # add back the prompt for attn for parralel-based prompts
         # nW*B, num_prompts + window_size*window_size, C
         num_windows = int(query_windows.shape[0] / B)
-        if self.prompt_location == "prepend":
-            # expand prompts_embs
-            # B, num_prompts, C --> nW*B, num_prompts, C
-            prompt_emb = prompt_emb.unsqueeze(0)
-            prompt_emb = prompt_emb.expand(num_windows, -1, -1, -1)
-            prompt_emb = prompt_emb.reshape((-1, self.num_prompts, C))
-            query_windows = torch.cat((prompt_emb, query_windows), dim=1)
 
-        attn_windows = self.w_msa(query_windows, mask=attn_mask)
+        if _with_prompt:
+            if self.prompt_location == "prepend":
+                # expand prompts_embs
+                # B, num_prompts, C --> nW*B, num_prompts, C
+                prompt_emb = prompt_emb.unsqueeze(0)
+                prompt_emb = prompt_emb.expand(num_windows, -1, -1, -1)
+                prompt_emb = prompt_emb.reshape((-1, self.num_prompts, C))
+                query_windows = torch.cat((prompt_emb, query_windows), dim=1)
 
-        # seperate prompt embs --> nW*B, num_prompts, C
-        if self.prompt_location == "prepend":
-            # change input size
-            prompt_emb = attn_windows[:, :self.num_prompts, :]
-            attn_windows = attn_windows[:, self.num_prompts:, :]
-            # change prompt_embs's shape:
-            # nW*B, num_prompts, C -> B, num_prompts, C
-            prompt_emb = prompt_emb.view(-1, B, self.num_prompts, C)
-            prompt_emb = prompt_emb.mean(0)
+        attn_windows = self.w_msa(query_windows, mask=attn_mask, with_prompt=_with_prompt)
+
+        if _with_prompt:
+            # seperate prompt embs --> nW*B, num_prompts, C
+            if self.prompt_location == "prepend":
+                # change input size
+                prompt_emb = attn_windows[:, :self.num_prompts, :]
+                attn_windows = attn_windows[:, self.num_prompts:, :]
+                # change prompt_embs's shape:
+                # nW*B, num_prompts, C -> B, num_prompts, C
+                prompt_emb = prompt_emb.view(-1, B, self.num_prompts, C)
+                prompt_emb = prompt_emb.mean(0)
 
         # merge windows
         attn_windows = attn_windows.view(-1, self.window_size,
@@ -393,9 +417,10 @@ class PromptedShiftWindowMSA(BaseModule):
 
         x = x.view(B, H * W, C)
 
-        # add the prompt back:
-        if self.prompt_location == "prepend":
-            x = torch.cat((prompt_emb, x), dim=1)
+        if _with_prompt:
+            # add the prompt back:
+            if self.prompt_location == "prepend":
+                x = torch.cat((prompt_emb, x), dim=1)
 
         x = self.drop(x)
         return x
@@ -655,7 +680,7 @@ class PromptedSwinBlockSequence(BaseModule):
 
 
 @BACKBONES.register_module()
-class PromptedSwinTransformer(BaseModule):
+class PredictedPromptedSwinTransformer(BaseModule):
     """ Swin Transformer
     A PyTorch implement of : `Swin Transformer:
     Hierarchical Vision Transformer using Shifted Windows`  -
@@ -762,7 +787,7 @@ class PromptedSwinTransformer(BaseModule):
         else:
             raise TypeError('pretrained must be a str or None')
 
-        super(PromptedSwinTransformer, self).__init__(init_cfg=init_cfg)
+        super(PredictedPromptedSwinTransformer, self).__init__(init_cfg=init_cfg)
 
         num_layers = len(depths)
         self.out_indices = out_indices
@@ -867,7 +892,7 @@ class PromptedSwinTransformer(BaseModule):
 
     def train(self, mode=True):
         """Convert the model into training mode while keep layers freezed."""
-        super(PromptedSwinTransformer, self).train(mode)
+        super(PredictedPromptedSwinTransformer, self).train(mode)
         self._freeze_stages()
 
     def _freeze_stages(self):
@@ -1007,8 +1032,9 @@ class PromptedSwinTransformer(BaseModule):
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')
                 out = norm_layer(out)
-                # remove prompts
-                out = out[:, self.prompt_num_tokens:, :]
+                if prompt_embd is not None:
+                    # remove prompts
+                    out = out[:, self.prompt_num_tokens:, :]
                 out = out.view(-1, *out_hw_shape,
                                self.num_features[i]).permute(0, 3, 1,
                                                              2).contiguous()
