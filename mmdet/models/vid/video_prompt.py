@@ -219,62 +219,25 @@ class VideoPrompt(BaseVideoDetector):
         """
         frame_id = img_metas[0].get('frame_id', -1)
         assert frame_id >= 0
-        num_left_ref_imgs = img_metas[0].get('num_left_ref_imgs', -1)
         frame_stride = img_metas[0].get('frame_stride', -1)
 
         # test with adaptive stride
         if frame_stride < 1:
             if frame_id == 0:
-                self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
-                # 'tuple' object (e.g. the output of FPN) does not support
-                # item assignment
-                self.memo.feats = []
-                for i in range(len(ref_x)):
-                    self.memo.feats.append(ref_x[i])
+                # [B, C, H, W]
+                ref_x = self.detector.backbone(ref_img[0])[-1]
+                # [B*K, C]
+                B, C, H, W = ref_x.shape
+                ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
+                ref_x = self.get_topk(ref_x)
+                # [num_prompt, C]
+                self.prompt = self.prompt_predictor(ref_x)
 
-            x = self.detector.extract_feat(img)
-            ref_x = self.memo.feats.copy()
-            for i in range(len(x)):
-                ref_x[i] = torch.cat((ref_x[i], x[i]), dim=0)
-            ref_img_metas = self.memo.img_metas.copy()
-            ref_img_metas.extend(img_metas)
-        # test with fixed stride
-        else:
-            if frame_id == 0:
-                self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
-                # 'tuple' object (e.g. the output of FPN) does not support
-                # item assignment
-                self.memo.feats = []
-                # the features of img is same as ref_x[i][[num_left_ref_imgs]]
-                x = []
-                for i in range(len(ref_x)):
-                    self.memo.feats.append(ref_x[i])
-                    x.append(ref_x[i][[num_left_ref_imgs]])
-            elif frame_id % frame_stride == 0:
-                assert ref_img is not None
-                x = []
-                ref_x = self.detector.extract_feat(ref_img[0])
-                for i in range(len(ref_x)):
-                    self.memo.feats[i] = torch.cat(
-                        (self.memo.feats[i], ref_x[i]), dim=0)[1:]
-                    x.append(self.memo.feats[i][[num_left_ref_imgs]])
-                self.memo.img_metas.extend(ref_img_metas[0])
-                self.memo.img_metas = self.memo.img_metas[1:]
-            else:
-                assert ref_img is None
-                x = self.detector.extract_feat(img)
+            x = self.detector.backbone(img, self.prompt)
+            if self.detector.with_neck:
+                x = self.detector.neck(x)
 
-            ref_x = self.memo.feats.copy()
-            for i in range(len(x)):
-                ref_x[i][num_left_ref_imgs] = x[i]
-            ref_img_metas = self.memo.img_metas.copy()
-            ref_img_metas[num_left_ref_imgs] = img_metas[0]
-
-        return x, img_metas, ref_x, ref_img_metas
+        return x, img_metas
 
     def simple_test(self,
                     img,
@@ -284,64 +247,21 @@ class VideoPrompt(BaseVideoDetector):
                     proposals=None,
                     ref_proposals=None,
                     rescale=False):
-        """Test without augmentation.
-
-        Args:
-            img (Tensor): of shape (1, C, H, W) encoding input image.
-                Typically these should be mean centered and std scaled.
-
-            img_metas (list[dict]): list of image information dict where each
-                dict has: 'img_shape', 'scale_factor', 'flip', and may also
-                contain 'filename', 'ori_shape', 'pad_shape', and
-                'img_norm_cfg'. For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            ref_img (list[Tensor] | None): The list only contains one Tensor
-                of shape (1, N, C, H, W) encoding input reference images.
-                Typically these should be mean centered and std scaled. N
-                denotes the number for reference images. There may be no
-                reference images in some cases.
-
-            ref_img_metas (list[list[list[dict]]] | None): The first and
-                second list only has one element. The third list contains
-                image information dict where each dict has: 'img_shape',
-                'scale_factor', 'flip', and may also contain 'filename',
-                'ori_shape', 'pad_shape', and 'img_norm_cfg'. For details on
-                the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`. There
-                may be no reference images in some cases.
-
-            proposals (None | Tensor): Override rpn proposals with custom
-                proposals. Use when `with_rpn` is False. Defaults to None.
-
-            rescale (bool): If False, then returned bboxes and masks will fit
-                the scale of img, otherwise, returned bboxes and masks
-                will fit the scale of original image shape. Defaults to False.
-
-        Returns:
-            dict[str : list(ndarray)]: The detection results.
-        """
         if ref_img is not None:
             ref_img = ref_img[0]
         if ref_img_metas is not None:
             ref_img_metas = ref_img_metas[0]
-        x, img_metas, ref_x, ref_img_metas = self.extract_feats(
-            img, img_metas, ref_img, ref_img_metas)
+        x, img_metas = self.extract_feats(img, img_metas, ref_img, ref_img_metas)
 
         if proposals is None:
             proposal_list = self.detector.rpn_head.simple_test_rpn(
                 x, img_metas)
-            ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
-                ref_x, ref_img_metas)
         else:
             proposal_list = proposals
-            ref_proposals_list = ref_proposals
 
         outs = self.detector.roi_head.simple_test(
             x,
-            ref_x,
             proposal_list,
-            ref_proposals_list,
             img_metas,
             rescale=rescale)
 
