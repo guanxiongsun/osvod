@@ -875,20 +875,20 @@ class PredictedPromptedSwinTransformer(BaseModule):
             layer_name = f'norm{i}'
             self.add_module(layer_name, layer)
 
-        # init prompts
-        if self.prompt_initiation == "random":
-            val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + embed_dims))  # noqa
-
-            assert self.prompt_location == 'prepend'
-            # for "prepend"
-            self.prompt_embeddings = nn.Parameter(torch.zeros(
-                1, self.prompt_num_tokens, embed_dims))
-            nn.init.uniform_(self.prompt_embeddings.data, -val, val)
-
-            assert not self.prompt_deep
-
-        else:
-            raise ValueError("Other initiation scheme is not supported")
+        # # init prompts
+        # if self.prompt_initiation == "random":
+        #     val = math.sqrt(6. / float(3 * reduce(mul, patch_size, 1) + embed_dims))  # noqa
+        #
+        #     assert self.prompt_location == 'prepend'
+        #     # for "prepend"
+        #     self.prompt_embeddings = nn.Parameter(torch.zeros(
+        #         1, self.prompt_num_tokens, embed_dims))
+        #     nn.init.uniform_(self.prompt_embeddings.data, -val, val)
+        #
+        #     assert not self.prompt_deep
+        #
+        # else:
+        #     raise ValueError("Other initiation scheme is not supported")
 
     def train(self, mode=True):
         """Convert the model into training mode while keep layers freezed."""
