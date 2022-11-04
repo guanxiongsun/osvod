@@ -5,6 +5,7 @@ import torch
 from addict import Dict
 from mmdet.models import build_detector
 from mmdet.models.predictors.attention_predictor import AttentionPredictor
+from mmdet.models.predictors.average_predictor import AveragePredictor
 
 from ..builder import MODELS
 from .base import BaseVideoDetector
@@ -24,7 +25,9 @@ class VideoPrompt(BaseVideoDetector):
                  init_cfg=None,
                  frozen_modules=None,
                  train_cfg=None,
-                 test_cfg=None):
+                 test_cfg=None,
+                 predictor='att',
+                 ):
         super(VideoPrompt, self).__init__(init_cfg)
         if isinstance(pretrained, dict):
             warnings.warn('DeprecationWarning: pretrained is deprecated, '
@@ -42,7 +45,13 @@ class VideoPrompt(BaseVideoDetector):
         self.test_cfg = test_cfg
 
         # create prompt predict network
-        self.prompt_predictor = AttentionPredictor(768)
+        print("The predictor is {}".format(predictor))
+        if predictor == 'att':
+            self.prompt_predictor = AttentionPredictor(768)
+        elif predictor == 'avg':
+            self.prompt_predictor = AveragePredictor(768)
+        else:
+            raise ValueError
 
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
