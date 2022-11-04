@@ -47,17 +47,6 @@ class VideoPrompt(BaseVideoDetector):
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
 
-    @staticmethod
-    def get_topk(x, k=100):
-        # x [B, N, C]
-        result = []
-        for feat in x:
-            l1 = feat.norm(1, dim=-1)
-            _, inds = l1.topk(k)
-            result.append(feat[inds])
-
-        return torch.cat(result)
-
     def forward_train(self,
                       img,
                       img_metas,
@@ -149,10 +138,6 @@ class VideoPrompt(BaseVideoDetector):
 
         # [B, C, H, W]
         ref_x = self.detector.backbone(ref_img[0])[-1]
-        # [B*K, C]
-        B, C, H, W = ref_x.shape
-        ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
-        ref_x = self.get_topk(ref_x)
 
         # [num_prompt, C]
         prompt = self.prompt_predictor(ref_x)
