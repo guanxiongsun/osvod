@@ -9,13 +9,7 @@ from .base import BaseVideoDetector
 
 
 @MODELS.register_module()
-class VideoPrompt(BaseVideoDetector):
-    """Sequence Level Semantics Aggregation for Video Object Detection.
-
-    This video object detector is the implementation of `SELSA
-    <https://arxiv.org/abs/1907.06390>`_.
-    """
-
+class DeepVideoPrompt(BaseVideoDetector):
     def __init__(self,
                  detector,
                  pretrained=None,
@@ -25,7 +19,7 @@ class VideoPrompt(BaseVideoDetector):
                  test_cfg=None,
                  predictor='att',
                  ):
-        super(VideoPrompt, self).__init__(init_cfg)
+        super(DeepVideoPrompt, self).__init__(init_cfg)
         if isinstance(pretrained, dict):
             warnings.warn('DeprecationWarning: pretrained is deprecated, '
                           'please use "init_cfg" instead')
@@ -71,84 +65,13 @@ class VideoPrompt(BaseVideoDetector):
                       ref_gt_masks=None,
                       ref_proposals=None,
                       **kwargs):
-        """
-        Args:
-            img (Tensor): of shape (N, C, H, W) encoding input images.
-                Typically these should be mean centered and std scaled.
-
-            img_metas (list[dict]): list of image info dict where each dict
-                has: 'img_shape', 'scale_factor', 'flip', and may also contain
-                'filename', 'ori_shape', 'pad_shape', and 'img_norm_cfg'.
-                For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            gt_bboxes (list[Tensor]): Ground truth bboxes for each image with
-                shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
-
-            gt_labels (list[Tensor]): class indices corresponding to each box.
-
-            ref_img (Tensor): of shape (N, 2, C, H, W) encoding input images.
-                Typically these should be mean centered and std scaled.
-                2 denotes there is two reference images for each input image.
-
-            ref_img_metas (list[list[dict]]): The first list only has one
-                element. The second list contains reference image information
-                dict where each dict has: 'img_shape', 'scale_factor', 'flip',
-                and may also contain 'filename', 'ori_shape', 'pad_shape', and
-                'img_norm_cfg'. For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            ref_gt_bboxes (list[Tensor]): The list only has one Tensor. The
-                Tensor contains ground truth bboxes for each reference image
-                with shape (num_all_ref_gts, 5) in
-                [ref_img_id, tl_x, tl_y, br_x, br_y] format. The ref_img_id
-                start from 0, and denotes the id of reference image for each
-                key image.
-
-            ref_gt_labels (list[Tensor]): The list only has one Tensor. The
-                Tensor contains class indices corresponding to each reference
-                box with shape (num_all_ref_gts, 2) in
-                [ref_img_id, class_indice].
-
-            gt_instance_ids (None | list[Tensor]): specify the instance id for
-                each ground truth bbox.
-
-            gt_bboxes_ignore (None | list[Tensor]): specify which bounding
-                boxes can be ignored when computing the loss.
-
-            gt_masks (None | Tensor) : true segmentation masks for each box
-                used if the architecture supports a segmentation task.
-
-            proposals (None | Tensor) : override rpn proposals with custom
-                proposals. Use when `with_rpn` is False.
-
-            ref_gt_instance_ids (None | list[Tensor]): specify the instance id
-                for each ground truth bboxes of reference images.
-
-            ref_gt_bboxes_ignore (None | list[Tensor]): specify which bounding
-                boxes of reference images can be ignored when computing the
-                loss.
-
-            ref_gt_masks (None | Tensor) : True segmentation masks for each
-                box of reference image used if the architecture supports a
-                segmentation task.
-
-            ref_proposals (None | Tensor) : override rpn proposals with custom
-                proposals of reference images. Use when `with_rpn` is False.
-
-        Returns:
-            dict[str, Tensor]: a dictionary of loss components
-        """
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
-        # [B, C, H, W]
-        ref_x = self.detector.backbone(ref_img[0])[-1]
+        # prepare deep prompts
+        self.detector.backbone.prepare_prompts(ref_img[0])
 
-        # [num_prompt, C]
-        prompt = self.prompt_predictor(ref_x)
-
-        x = self.detector.backbone(img, prompt)
+        x = self.detector.backbone(img)
         if self.detector.with_neck:
             x = self.detector.neck(x)
 
@@ -215,16 +138,10 @@ class VideoPrompt(BaseVideoDetector):
         # test with adaptive stride
         if frame_stride < 1:
             if frame_id == 0:
-                # [B, C, H, W]
-                ref_x = self.detector.backbone(ref_img[0])[-1]
-                # # [B*K, C]
-                # B, C, H, W = ref_x.shape
-                # ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
-                # ref_x = self.get_topk(ref_x)
-                # [num_prompt, C]
-                self.prompt = self.prompt_predictor(ref_x)
+                # prepare deep prompts
+                self.detector.backbone.prepare_prompts(ref_img[0])
 
-            x = self.detector.backbone(img, self.prompt)
+            x = self.detector.backbone(img)
             if self.detector.with_neck:
                 x = self.detector.neck(x)
 
@@ -255,11 +172,6 @@ class VideoPrompt(BaseVideoDetector):
             proposal_list,
             img_metas,
             rescale=rescale)
-
-        # results = dict()
-        # results['det_bboxes'] = outs[0]
-        # if len(outs) == 2:
-        #     results['det_masks'] = outs[1]
 
         results = outs
         return results

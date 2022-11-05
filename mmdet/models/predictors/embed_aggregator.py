@@ -4,28 +4,8 @@ import torch.nn as nn
 from mmcv.cnn.bricks import ConvModule
 from mmcv.runner import BaseModule
 
-from mmdet.models import AGGREGATORS
 
-
-@AGGREGATORS.register_module()
 class EmbedAggregator(BaseModule):
-    """Embedding convs to aggregate multi feature maps.
-
-    This module is proposed in "Flow-Guided Feature Aggregation for Video
-    Object Detection". `FGFA <https://arxiv.org/abs/1703.10025>`_.
-
-    Args:
-        num_convs (int): Number of embedding convs.
-        channels (int): Channels of embedding convs. Defaults to 256.
-        kernel_size (int): Kernel size of embedding convs, Defaults to 3.
-        norm_cfg (dict): Configuration of normlization method after each
-            conv. Defaults to None.
-        act_cfg (dict): Configuration of activation method after each
-            conv. Defaults to dict(type='ReLU').
-        init_cfg (dict or list[dict], optional): Initialization config dict.
-            Defaults to None.
-    """
-
     def __init__(self,
                  num_convs=1,
                  channels=256,

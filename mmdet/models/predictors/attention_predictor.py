@@ -3,10 +3,6 @@ import torch
 import torch.nn as nn
 from mmcv.runner import BaseModule
 
-from mmdet.models import PREDICTORS
-
-
-@PREDICTORS.register_module()
 class AttentionPredictor(BaseModule):
     def __init__(self, in_channels, num_attention_blocks=16, init_cfg=None,
                  num_prompts=5, embed_dims=96
