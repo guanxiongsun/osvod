@@ -1,8 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import warnings
 from mmdet.models import build_detector
-from mmdet.models.predictors.attention_predictor import AttentionPredictor
-from mmdet.models.predictors.average_predictor import AveragePredictor
 
 from ..builder import MODELS
 from .base import BaseVideoDetector
@@ -34,15 +32,6 @@ class DeepVideoPrompt(BaseVideoDetector):
             'selsa video detector only supports two stage detector'
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
-
-        # create prompt predict network
-        print("The predictor is {}".format(predictor))
-        if predictor == 'att':
-            self.prompt_predictor = AttentionPredictor(768)
-        elif predictor == 'avg':
-            self.prompt_predictor = AveragePredictor(768)
-        else:
-            raise ValueError
 
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
