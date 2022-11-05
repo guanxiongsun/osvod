@@ -32,7 +32,8 @@ model = dict(
                 dropout=0.,
                 initiation='random',
                 predictor='avg',
-                stages=[False, False, True, False]
+                stages=[False, False, True, False],
+                depths=[0, 0, 5, 0]
             )
         ),
         neck=dict(

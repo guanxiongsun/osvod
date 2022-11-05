@@ -519,6 +519,7 @@ class DeepPromptedSwinBlockSequence(BaseModule):
                  # add two more parameters for prompt
                  num_prompts=None, prompt_location=None, deep_prompt=True,
                  use_prompt=None, predictor='avg',
+                 prompt_depth=0,
                  ):
         super().__init__(init_cfg=init_cfg)
 
@@ -531,6 +532,7 @@ class DeepPromptedSwinBlockSequence(BaseModule):
         self.blocks = ModuleList()
 
         self.use_prompt = use_prompt
+        self.prompt_depth = prompt_depth
         # if use visual prompts
         if not use_prompt:
             for i in range(depth):
@@ -558,31 +560,51 @@ class DeepPromptedSwinBlockSequence(BaseModule):
                 raise ValueError
 
             for i in range(depth):
-                block = PromptedSwinBlock(
-                    # extra args for prompt
-                    num_prompts, prompt_location,
-                    embed_dims=embed_dims,
-                    num_heads=num_heads,
-                    feedforward_channels=feedforward_channels,
-                    window_size=window_size,
-                    shift=False if i % 2 == 0 else True,
-                    qkv_bias=qkv_bias,
-                    qk_scale=qk_scale,
-                    drop_rate=drop_rate,
-                    attn_drop_rate=attn_drop_rate,
-                    drop_path_rate=drop_path_rates[i],
-                    act_cfg=act_cfg,
-                    norm_cfg=norm_cfg,
-                    with_cp=with_cp,
-                    init_cfg=None
-                )
-                self.blocks.append(block)
-                # add related attributes
-                self.deep_prompt = deep_prompt
-                self.num_prompts = num_prompts
-                self.prompt_location = prompt_location
-                if self.deep_prompt and self.prompt_location != "prepend":
-                    raise ValueError("deep prompt mode for swin is only applicable to prepend")
+                if i >= prompt_depth:
+                    block = PromptedSwinBlock(
+                        # extra args for prompt
+                        num_prompts, prompt_location,
+                        embed_dims=embed_dims,
+                        num_heads=num_heads,
+                        feedforward_channels=feedforward_channels,
+                        window_size=window_size,
+                        shift=False if i % 2 == 0 else True,
+                        qkv_bias=qkv_bias,
+                        qk_scale=qk_scale,
+                        drop_rate=drop_rate,
+                        attn_drop_rate=attn_drop_rate,
+                        drop_path_rate=drop_path_rates[i],
+                        act_cfg=act_cfg,
+                        norm_cfg=norm_cfg,
+                        with_cp=with_cp,
+                        init_cfg=None
+                    )
+                    self.blocks.append(block)
+                else:
+                    block = SwinBlock(
+                        embed_dims=embed_dims,
+                        num_heads=num_heads,
+                        feedforward_channels=feedforward_channels,
+                        window_size=window_size,
+                        shift=False if i % 2 == 0 else True,
+                        qkv_bias=qkv_bias,
+                        qk_scale=qk_scale,
+                        drop_rate=drop_rate,
+                        attn_drop_rate=attn_drop_rate,
+                        drop_path_rate=drop_path_rates[i],
+                        act_cfg=act_cfg,
+                        norm_cfg=norm_cfg,
+                        with_cp=with_cp,
+                        init_cfg=None
+                    )
+                    self.blocks.append(block)
+
+            # add related attributes
+            self.deep_prompt = deep_prompt
+            self.num_prompts = num_prompts
+            self.prompt_location = prompt_location
+            if self.deep_prompt and self.prompt_location != "prepend":
+                raise ValueError("deep prompt mode for swin is only applicable to prepend")
 
         # adjust patch mergin layer
         self.downsample = downsample
@@ -598,11 +620,14 @@ class DeepPromptedSwinBlockSequence(BaseModule):
             return x, hw_shape, x, hw_shape
 
     def prepare_prompts(self, x, hw_shape):
-        for block in self.blocks:
+        for i, block in enumerate(self.blocks):
             if self.use_prompt:
-                prompt = self.predictor.forward_seq(x)
-                block.prompt = prompt
-                x = block.prepare_prompts(x, hw_shape)
+                if i >= self.prompt_depth:
+                    prompt = self.predictor.forward_seq(x)
+                    block.prompt = prompt
+                    x = block.prepare_prompts(x, hw_shape)
+                else:
+                    x = block(x, hw_shape)
             else:
                 x = block(x, hw_shape)
 
@@ -705,8 +730,10 @@ class DeepPredictedPromptedSwinTransformer(BaseModule):
         self.prompt_deep = prompt_cfg.deep
         self.prompt_dropout = prompt_cfg.dropout
         self.prompt_initiation = prompt_cfg.initiation
-        # [2]
+        # [False, False, True, False]
         self.prompt_stages = prompt_cfg.stages
+        # [0,0,0,0]
+        self.prompt_depths = prompt_cfg.depths
         self.prompt_predictor = prompt_cfg.predictor
 
         self.prompt_dropout = Dropout(self.prompt_dropout)
@@ -725,7 +752,8 @@ class DeepPredictedPromptedSwinTransformer(BaseModule):
             else:
                 downsample = None
 
-            _use_prompt = i in self.prompt_stages
+            _use_prompt = self.prompt_stages[i]
+            _prompt_depth = self.prompt_depths[i]
             stage = DeepPromptedSwinBlockSequence(
                 embed_dims=in_channels,
                 num_heads=num_heads[i],
@@ -747,6 +775,7 @@ class DeepPredictedPromptedSwinTransformer(BaseModule):
                 deep_prompt=self.prompt_deep,
                 use_prompt=_use_prompt,
                 predictor=self.prompt_predictor,
+                prompt_depth=_prompt_depth,
             )
             self.stages.append(stage)
             if downsample:
