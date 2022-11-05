@@ -220,10 +220,10 @@ class VideoPrompt(BaseVideoDetector):
             if frame_id == 0:
                 # [B, C, H, W]
                 ref_x = self.detector.backbone(ref_img[0])[-1]
-                # [B*K, C]
-                B, C, H, W = ref_x.shape
-                ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
-                ref_x = self.get_topk(ref_x)
+                # # [B*K, C]
+                # B, C, H, W = ref_x.shape
+                # ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
+                # ref_x = self.get_topk(ref_x)
                 # [num_prompt, C]
                 self.prompt = self.prompt_predictor(ref_x)
 
