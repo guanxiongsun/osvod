@@ -20,7 +20,7 @@ from .roi_heads import *  # noqa: F401,F403
 from .seg_heads import *  # noqa: F401,F403
 
 # add video models
-from .vid import SELSA, FCOSAtt, CenterNetAtt
+from .vid import SELSA, FCOSAtt, CenterNetAtt, SELSAVideoPrompt
 from .aggregators import SelsaAggregator
 from .memory import MPN
 

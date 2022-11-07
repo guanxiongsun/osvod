@@ -186,7 +186,8 @@ def main():
         # multi-frame video model
         if cfg.model.get('type', False) in ("SELSA", "MAMBA", "RDN",
                                             "FCOSAtt", "YOLOAtt", "CenterNetAtt",
-                                            "VideoPrompt", 'DeepVideoPrompt'):
+                                            "VideoPrompt", 'DeepVideoPrompt',
+                                            'SELSAVideoPrompt'):
             model = build_model(cfg.model)
 
         # single-frame video base model

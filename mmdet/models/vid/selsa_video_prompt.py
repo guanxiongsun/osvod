@@ -7,6 +7,7 @@ from mmdet.models import build_detector
 
 from ..builder import MODELS
 from .base import BaseVideoDetector
+from ..predictors import AveragePredictor, AttentionPredictor
 
 
 @MODELS.register_module()
@@ -23,7 +24,9 @@ class SELSAVideoPrompt(BaseVideoDetector):
                  init_cfg=None,
                  frozen_modules=None,
                  train_cfg=None,
-                 test_cfg=None):
+                 test_cfg=None,
+                 predictor='avg',
+                 ):
         super(SELSAVideoPrompt, self).__init__(init_cfg)
         if isinstance(pretrained, dict):
             warnings.warn('DeprecationWarning: pretrained is deprecated, '
@@ -39,6 +42,15 @@ class SELSAVideoPrompt(BaseVideoDetector):
             'selsa video detector only supports two stage detector'
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
+
+        # create prompt predict network
+        print("The predictor is {}".format(predictor))
+        if predictor == 'att':
+            self.prompt_predictor = AttentionPredictor(768)
+        elif predictor == 'avg':
+            self.prompt_predictor = AveragePredictor(768)
+        else:
+            raise ValueError
 
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
@@ -61,84 +73,31 @@ class SELSAVideoPrompt(BaseVideoDetector):
                       ref_gt_masks=None,
                       ref_proposals=None,
                       **kwargs):
-        """
-        Args:
-            img (Tensor): of shape (N, C, H, W) encoding input images.
-                Typically these should be mean centered and std scaled.
-
-            img_metas (list[dict]): list of image info dict where each dict
-                has: 'img_shape', 'scale_factor', 'flip', and may also contain
-                'filename', 'ori_shape', 'pad_shape', and 'img_norm_cfg'.
-                For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            gt_bboxes (list[Tensor]): Ground truth bboxes for each image with
-                shape (num_gts, 4) in [tl_x, tl_y, br_x, br_y] format.
-
-            gt_labels (list[Tensor]): class indices corresponding to each box.
-
-            ref_img (Tensor): of shape (N, 2, C, H, W) encoding input images.
-                Typically these should be mean centered and std scaled.
-                2 denotes there is two reference images for each input image.
-
-            ref_img_metas (list[list[dict]]): The first list only has one
-                element. The second list contains reference image information
-                dict where each dict has: 'img_shape', 'scale_factor', 'flip',
-                and may also contain 'filename', 'ori_shape', 'pad_shape', and
-                'img_norm_cfg'. For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            ref_gt_bboxes (list[Tensor]): The list only has one Tensor. The
-                Tensor contains ground truth bboxes for each reference image
-                with shape (num_all_ref_gts, 5) in
-                [ref_img_id, tl_x, tl_y, br_x, br_y] format. The ref_img_id
-                start from 0, and denotes the id of reference image for each
-                key image.
-
-            ref_gt_labels (list[Tensor]): The list only has one Tensor. The
-                Tensor contains class indices corresponding to each reference
-                box with shape (num_all_ref_gts, 2) in
-                [ref_img_id, class_indice].
-
-            gt_instance_ids (None | list[Tensor]): specify the instance id for
-                each ground truth bbox.
-
-            gt_bboxes_ignore (None | list[Tensor]): specify which bounding
-                boxes can be ignored when computing the loss.
-
-            gt_masks (None | Tensor) : true segmentation masks for each box
-                used if the architecture supports a segmentation task.
-
-            proposals (None | Tensor) : override rpn proposals with custom
-                proposals. Use when `with_rpn` is False.
-
-            ref_gt_instance_ids (None | list[Tensor]): specify the instance id
-                for each ground truth bboxes of reference images.
-
-            ref_gt_bboxes_ignore (None | list[Tensor]): specify which bounding
-                boxes of reference images can be ignored when computing the
-                loss.
-
-            ref_gt_masks (None | Tensor) : True segmentation masks for each
-                box of reference image used if the architecture supports a
-                segmentation task.
-
-            ref_proposals (None | Tensor) : override rpn proposals with custom
-                proposals of reference images. Use when `with_rpn` is False.
-
-        Returns:
-            dict[str, Tensor]: a dictionary of loss components
-        """
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
-        all_imgs = torch.cat((img, ref_img[0]), dim=0)
-        all_x = self.detector.extract_feat(all_imgs)
-        x = []
-        ref_x = []
-        for i in range(len(all_x)):
-            x.append(all_x[i][[0]])
-            ref_x.append(all_x[i][1:])
+        # [B, C, H, W]
+        # ref w.o. prompt
+        ref_x = self.detector.backbone(ref_img[0])
+
+        # [num_prompt, C]
+        # key w. prompt
+        prompt = self.prompt_predictor(ref_x[-1])
+        x = self.detector.backbone(img, prompt)
+        if self.detector.with_neck:
+            x = self.detector.neck(x)
+
+        # ref pass fpn
+        if self.detector.with_neck:
+            ref_x = self.detector.neck(ref_x)
+
+        # all_imgs = torch.cat((img, ref_img[0]), dim=0)
+        # all_x = self.detector.extract_feat(all_imgs)
+        # x = []
+        # ref_x = []
+        # for i in range(len(all_x)):
+        #     x.append(all_x[i][[0]])
+        #     ref_x.append(all_x[i][1:])
 
         losses = dict()
 
@@ -209,52 +168,32 @@ class SELSAVideoPrompt(BaseVideoDetector):
             if frame_id == 0:
                 self.memo = Dict()
                 self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
+
+                # extract feature maps w.o. prompt
+                # [B, C, H, W]
+                ref_x = self.detector.backbone(ref_img[0])
+                # predict prompts
+                self.prompt = self.prompt_predictor(ref_x[-1])
+                # ref pass fpn
+                if self.detector.with_neck:
+                    ref_x = self.detector.neck(ref_x)
+
                 # 'tuple' object (e.g. the output of FPN) does not support
                 # item assignment
                 self.memo.feats = []
                 for i in range(len(ref_x)):
                     self.memo.feats.append(ref_x[i])
 
-            x = self.detector.extract_feat(img)
+            # use prompts
+            x = self.detector.backbone(img, self.prompt)
+            if self.detector.with_neck:
+                x = self.detector.neck(x)
+
             ref_x = self.memo.feats.copy()
             for i in range(len(x)):
                 ref_x[i] = torch.cat((ref_x[i], x[i]), dim=0)
             ref_img_metas = self.memo.img_metas.copy()
             ref_img_metas.extend(img_metas)
-        # test with fixed stride
-        else:
-            if frame_id == 0:
-                self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
-                ref_x = self.detector.extract_feat(ref_img[0])
-                # 'tuple' object (e.g. the output of FPN) does not support
-                # item assignment
-                self.memo.feats = []
-                # the features of img is same as ref_x[i][[num_left_ref_imgs]]
-                x = []
-                for i in range(len(ref_x)):
-                    self.memo.feats.append(ref_x[i])
-                    x.append(ref_x[i][[num_left_ref_imgs]])
-            elif frame_id % frame_stride == 0:
-                assert ref_img is not None
-                x = []
-                ref_x = self.detector.extract_feat(ref_img[0])
-                for i in range(len(ref_x)):
-                    self.memo.feats[i] = torch.cat(
-                        (self.memo.feats[i], ref_x[i]), dim=0)[1:]
-                    x.append(self.memo.feats[i][[num_left_ref_imgs]])
-                self.memo.img_metas.extend(ref_img_metas[0])
-                self.memo.img_metas = self.memo.img_metas[1:]
-            else:
-                assert ref_img is None
-                x = self.detector.extract_feat(img)
-
-            ref_x = self.memo.feats.copy()
-            for i in range(len(x)):
-                ref_x[i][num_left_ref_imgs] = x[i]
-            ref_img_metas = self.memo.img_metas.copy()
-            ref_img_metas[num_left_ref_imgs] = img_metas[0]
 
         return x, img_metas, ref_x, ref_img_metas
 
@@ -266,43 +205,6 @@ class SELSAVideoPrompt(BaseVideoDetector):
                     proposals=None,
                     ref_proposals=None,
                     rescale=False):
-        """Test without augmentation.
-
-        Args:
-            img (Tensor): of shape (1, C, H, W) encoding input image.
-                Typically these should be mean centered and std scaled.
-
-            img_metas (list[dict]): list of image information dict where each
-                dict has: 'img_shape', 'scale_factor', 'flip', and may also
-                contain 'filename', 'ori_shape', 'pad_shape', and
-                'img_norm_cfg'. For details on the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`.
-
-            ref_img (list[Tensor] | None): The list only contains one Tensor
-                of shape (1, N, C, H, W) encoding input reference images.
-                Typically these should be mean centered and std scaled. N
-                denotes the number for reference images. There may be no
-                reference images in some cases.
-
-            ref_img_metas (list[list[list[dict]]] | None): The first and
-                second list only has one element. The third list contains
-                image information dict where each dict has: 'img_shape',
-                'scale_factor', 'flip', and may also contain 'filename',
-                'ori_shape', 'pad_shape', and 'img_norm_cfg'. For details on
-                the values of these keys see
-                `mmtrack/datasets/pipelines/formatting.py:VideoCollect`. There
-                may be no reference images in some cases.
-
-            proposals (None | Tensor): Override rpn proposals with custom
-                proposals. Use when `with_rpn` is False. Defaults to None.
-
-            rescale (bool): If False, then returned bboxes and masks will fit
-                the scale of img, otherwise, returned bboxes and masks
-                will fit the scale of original image shape. Defaults to False.
-
-        Returns:
-            dict[str : list(ndarray)]: The detection results.
-        """
         if ref_img is not None:
             ref_img = ref_img[0]
         if ref_img_metas is not None:
