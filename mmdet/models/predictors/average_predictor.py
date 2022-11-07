@@ -3,10 +3,7 @@ import torch
 import torch.nn as nn
 from mmcv.runner import BaseModule
 
-from mmdet.models import PREDICTORS
 
-
-@PREDICTORS.register_module()
 class AveragePredictor(BaseModule):
     def __init__(self, in_channels, init_cfg=None,
                  num_prompts=5, embed_dims=96
@@ -30,6 +27,15 @@ class AveragePredictor(BaseModule):
         # [B*K, C]
         B, C, H, W = ref_x.shape
         ref_x = ref_x.view(B, C, -1).permute(0, 2, 1)
+        ref_x = self.get_topk(ref_x, k=self.num_prompts)
+
+        # [n, c] -> [n, emb]
+        ref_x = self.reduction(ref_x)
+
+        return ref_x
+
+    def forward_seq(self, ref_x):
+        # [B, L, C]
         ref_x = self.get_topk(ref_x, k=self.num_prompts)
 
         # [n, c] -> [n, emb]
