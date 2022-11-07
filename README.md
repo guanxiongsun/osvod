@@ -37,14 +37,14 @@ Pretrained models are now available at [Baidu](https://pan.baidu.com/s/1qjIAD3oh
 ### Option 1: Step-by-step installation
 
 ```bash
-# conda create --name osvod -y python=3.7
-# source activate osvod
+# conda create --name tdvit -y python=3.7
+# source activate tdvit
 
-# install PyTorch 1.8.1 with CUDA 10.1
-pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+# install PyTorch 1.8 with CUDA 10.2
+conda install pytorch==1.8.0 torchvision==0.9.0 torchaudio==0.8.0 cudatoolkit=10.2 -c pytorch
 
-# install mmcv-full 1.4.0
-pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html
+# install mmcv-full 1.3.17
+pip install mmcv-full==1.3.17 -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/index.html
 
 # install other requirements
 pip install -r requirements.txt
@@ -100,7 +100,7 @@ You can use the following commands for testing:
 
 ```shell
 # single-gpu testing
-python tools/test.py ${CONFIG_FILE} [--checkpoint ${CHECKPOINT_FILE}] [--out ${RESULT_FILE}] [--eval ${EVAL_METRICS}]
+python tools/test.py ${CONFIG_FILE} ${CHECKPOINT_FILE} [--out ${RESULT_FILE}] [--eval ${EVAL_METRICS}]
 
 # multi-gpu testing
 ./tools/dist_test.sh ${CONFIG_FILE} ${GPU_NUM} [--checkpoint ${CHECKPOINT_FILE}] [--out ${RESULT_FILE}] [--eval ${EVAL_METRICS}]
