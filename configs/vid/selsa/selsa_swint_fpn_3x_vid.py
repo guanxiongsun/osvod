@@ -5,13 +5,12 @@ _base_ = [
 pretrained = "https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_tiny_patch4_window7_224.pth"  # noqa
 
 model = dict(
-    type="SELSAVideoPrompt",
-    predictor='avg',
+    type="SELSA",
     pretrained=None,
     detector=dict(
         type="FasterRCNN",
         backbone=dict(
-            type="PredictedPromptedSwinTransformer",
+            type="SwinTransformer",
             embed_dims=96,
             depths=[2, 2, 6, 2],
             num_heads=[3, 6, 12, 24],
@@ -26,13 +25,6 @@ model = dict(
             with_cp=False,
             convert_weights=True,
             init_cfg=dict(type="Pretrained", checkpoint=pretrained),
-            prompt_cfg=dict(
-                num_tokens=5,
-                location='prepend',
-                deep=False,
-                dropout=0.,
-                initiation='random',
-            )
         ),
         neck=dict(
             type="FPN", in_channels=[96, 192, 384, 768], out_channels=256, num_outs=5
