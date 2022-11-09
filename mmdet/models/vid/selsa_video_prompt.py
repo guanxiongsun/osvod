@@ -26,6 +26,7 @@ class SELSAVideoPrompt(BaseVideoDetector):
                  train_cfg=None,
                  test_cfg=None,
                  predictor='avg',
+                 extra_frames=False,
                  ):
         super(SELSAVideoPrompt, self).__init__(init_cfg)
         if isinstance(pretrained, dict):
@@ -52,6 +53,8 @@ class SELSAVideoPrompt(BaseVideoDetector):
         else:
             raise ValueError
 
+        self.extra_frames = extra_frames
+
         if frozen_modules is not None:
             self.freeze_module(frozen_modules)
 
@@ -76,28 +79,40 @@ class SELSAVideoPrompt(BaseVideoDetector):
         assert len(img) == 1, \
             'selsa video detector only supports 1 batch size per gpu for now.'
 
-        # [B, C, H, W]
-        # ref w.o. prompt
-        ref_x = self.detector.backbone(ref_img[0])
+        if self.extra_frames:
+            # ref_x [4, C, H, W]
+            prompt_ref = ref_img[0][:2]
+            selsa_ref = ref_img[0][2:]
+            prompt_ref = self.detector.backbone(prompt_ref)
 
-        # [num_prompt, C]
-        # key w. prompt
-        prompt = self.prompt_predictor(ref_x[-1])
-        x = self.detector.backbone(img, prompt)
-        if self.detector.with_neck:
-            x = self.detector.neck(x)
+            prompt = self.prompt_predictor(prompt_ref[-1])
 
-        # ref pass fpn
-        if self.detector.with_neck:
-            ref_x = self.detector.neck(ref_x)
+            all_imgs = torch.cat([img, selsa_ref])
+            all_x = self.detector.backbone(all_imgs, prompt)
+            # ref pass fpn
+            if self.detector.with_neck:
+                all_x = self.detector.neck(all_x)
 
-        # all_imgs = torch.cat((img, ref_img[0]), dim=0)
-        # all_x = self.detector.extract_feat(all_imgs)
-        # x = []
-        # ref_x = []
-        # for i in range(len(all_x)):
-        #     x.append(all_x[i][[0]])
-        #     ref_x.append(all_x[i][1:])
+            x = []
+            ref_x = []
+            for i in range(len(all_x)):
+                x.append(all_x[i][[0]])
+                ref_x.append(all_x[i][1:])
+        else:
+            # [B, C, H, W]
+            # ref w.o. prompt
+            ref_x = self.detector.backbone(ref_img[0])
+
+            # [num_prompt, C]
+            # key w. prompt
+            prompt = self.prompt_predictor(ref_x[-1])
+            x = self.detector.backbone(img, prompt)
+            if self.detector.with_neck:
+                x = self.detector.neck(x)
+
+            # ref pass fpn
+            if self.detector.with_neck:
+                ref_x = self.detector.neck(ref_x)
 
         losses = dict()
 
@@ -114,8 +129,12 @@ class SELSAVideoPrompt(BaseVideoDetector):
                 proposal_cfg=proposal_cfg)
             losses.update(rpn_losses)
 
-            ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
-                ref_x, ref_img_metas[0])
+            if self.extra_frames:
+                ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
+                    ref_x, ref_img_metas[0][2:])
+            else:
+                ref_proposals_list = self.detector.rpn_head.simple_test_rpn(
+                    ref_x, ref_img_metas[0])
         else:
             proposal_list = proposals
             ref_proposals_list = ref_proposals
@@ -167,16 +186,29 @@ class SELSAVideoPrompt(BaseVideoDetector):
         if frame_stride < 1:
             if frame_id == 0:
                 self.memo = Dict()
-                self.memo.img_metas = ref_img_metas[0]
+                if self.extra_frames:
+                    self.memo.img_metas = ref_img_metas[0][::2]
+                    # ref for prompt
+                    prompt_ref = ref_img[0][1::2]
+                    selsa_ref = ref_img[0][::2]
 
-                # extract feature maps w.o. prompt
-                # [B, C, H, W]
-                ref_x = self.detector.backbone(ref_img[0])
-                # predict prompts
-                self.prompt = self.prompt_predictor(ref_x[-1])
-                # ref pass fpn
-                if self.detector.with_neck:
-                    ref_x = self.detector.neck(ref_x)
+                    prompt_ref = self.detector.backbone(prompt_ref)
+                    self.prompt = self.prompt_predictor(prompt_ref[-1])
+
+                    ref_x = self.detector.backbone(selsa_ref, self.prompt)
+                    if self.detector.with_neck:
+                        ref_x = self.detector.neck(ref_x)
+
+                else:
+                    self.memo.img_metas = ref_img_metas[0]
+                    # extract feature maps w.o. prompt
+                    # [B, C, H, W]
+                    ref_x = self.detector.backbone(ref_img[0])
+                    # predict prompts
+                    self.prompt = self.prompt_predictor(ref_x[-1])
+                    # ref pass fpn
+                    if self.detector.with_neck:
+                        ref_x = self.detector.neck(ref_x)
 
                 # 'tuple' object (e.g. the output of FPN) does not support
                 # item assignment
