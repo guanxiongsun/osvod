@@ -3,7 +3,7 @@ _base_ = [
     "../../_base_/schedules/schedule_1x.py",
 ]
 
-checkpoint = 'work_dirs/pretrains/FCOS_R_101_FPN_2x.pth'
+checkpoint = 'work_dirs/pretrains/fcos_r101_caffe_fpn_gn-head_mstrain_coco_backbone.pth'
 
 # model settings
 model = dict(
