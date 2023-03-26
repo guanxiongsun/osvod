@@ -1,15 +1,13 @@
-# ECCV2022: efficient one-stage video object detection
+# Efficient One-stage Video Object Detection by Exploiting Temporal Consistency (ECCV22)
 
 [![License](https://img.shields.io/badge/license-BSD-blue.svg)](LICENSE)
 
 By [Guanxiong Sun](https://sunguanxiong.github.io).
 
-This repo is an official implementation of "TDViT: Temporal Dilated Video Transformer for Dense Video Tasks", submitted to CVPR 2022 (under reviewing). This repository contains a PyTorch implementation of our approach TDViT based on [mmdetection](https://github.com/open-mmlab/mmdetection).
+This repo contains the PyTorch implementations of the paper "Efficient One-stage Video Object Detection by Exploiting Temporal Consistency" published in ECCV 2022.
+The code is based on two open-source repo [mmdetection](https://github.com/open-mmlab/mmdetection).
 
-This is based on two open-source repo: [mmdetection](https://github.com/open-mmlab/mmdetection/tree/v2.16.0).
-and [mmtracking](https://github.com/open-mmlab/mmtracking).
-Specifically, the mmdetection repo is designed for still-image object detection.
-In order to tackle video object detection, we borrow the data wrapper and evaluation code in the mmtracking repo.
+This is based on two open-source toolboxes: [mmtracking](https://github.com/open-mmlab/mmtracking) and [mmdetection](https://github.com/open-mmlab/mmdetection).
 
 ## Main Results
 
@@ -27,24 +25,24 @@ Pretrained models are now available at [Baidu](https://pan.baidu.com/s/1qjIAD3oh
 ### Requirements:
 
 - python 3.7
-- pytorch 1.8.1
-- torchvision 0.9.1
-- mmdet 2.19.1
-- mmcv-full 1.4.0
+- pytorch 1.8.0
+- torchvision 0.9.0
+- mmcv-full 1.3.17
 - GCC 7.5.0
 - CUDA 10.1
 
-### Option 1: Step-by-step installation
+### Installation
 
 ```bash
-# conda create --name osvod -y python=3.7
-# source activate osvod
+# create conda environment
+conda create --name eovod -y python=3.7
+conda activate eovod
 
-# install PyTorch 1.8.1 with CUDA 10.1
-pip install torch==1.8.1+cu101 torchvision==0.9.1+cu101 torchaudio==0.8.1 -f https://download.pytorch.org/whl/torch_stable.html
+# install PyTorch 1.8.0 with cuda 10.2
+conda install pytorch==1.8.0 torchvision==0.9.0 cudatoolkit=10.2 -c pytorch
 
-# install mmcv-full 1.4.0
-pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu101/torch1.8.0/index.html
+# install mmcv-full 1.3.17
+pip install mmcv-full==1.3.17 -f https://download.openmmlab.com/mmcv/dist/cu102/torch1.8.0/index.html
 
 # install other requirements
 pip install -r requirements.txt
@@ -84,6 +82,48 @@ python ./tools/convert_datasets/ilsvrc/imagenet2coco_vid.py -i ./data/ILSVRC -o 
 ```
 
 ## Usage
+
+### Training
+
+#### Training on a single GPU
+
+```shell
+python tools/train.py ${CONFIG_FILE} [optional arguments]
+```
+
+#### Training on multiple GPUs
+
+We provide `tools/dist_train.sh` to launch training on multiple GPUs.
+The basic usage is as follows.
+
+```shell
+bash ./tools/dist_train.sh \
+    ${CONFIG_FILE} \
+    ${GPU_NUM} \
+    [optional arguments]
+```
+
+Optional arguments remain the same as stated above.
+
+If you would like to launch multiple jobs on a single machine, e.g., 2 jobs of 4-GPU training on a machine with 8 GPUs,
+you need to specify different ports (29500 by default) for each job to avoid communication conflict.
+
+If you use `dist_train.sh` to launch training jobs, you can set the port in commands.
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3 PORT=29500 ./tools/dist_train.sh ${CONFIG_FILE} 4
+CUDA_VISIBLE_DEVICES=4,5,6,7 PORT=29501 ./tools/dist_train.sh ${CONFIG_FILE} 4
+```
+
+#### Example
+
+1. Train EOVOD(FCOS) and then evaluate AP at the last epoch.
+
+   ```shell
+   ./tools/dist_train.sh configs/vid/time_swin_lite/faster_rcnn_time_swint_lite_fpn_0.000025_3x_tricks_stride3_train.py 8
+   ```
+
+
 
 ### Inference
 
@@ -135,58 +175,4 @@ Assume that you have already downloaded the checkpoints to the directory `checkp
        --checkpoint checkpoints/dff_faster_rcnn_r101_dc5_1x_imagenetvid_20201218_172720-ad732e17.pth \
        --out results.pkl \
        --eval bbox
-   ```
-
-### Training
-
-MMTracking also provides out-of-the-box tools for training models.
-This section will show how to train _predefined_ models (under [configs](https://github.com/open-mmlab/mmtracking/tree/master/configs)) on standard datasets.
-
-By default we evaluate the model on the validation set after each epoch, you can change the evaluation interval by adding the interval argument in the training config.
-
-```python
-evaluation = dict(interval=12)  # This evaluate the model per 12 epoch.
-```
-
-**Important**: The default learning rate in all config files is for 8 GPUs.
-According to the [Linear Scaling Rule](https://arxiv.org/abs/1706.02677), you need to set the learning rate proportional to the batch size if you use different GPUs or images per GPU, e.g., `lr=0.01` for 8 GPUs \* 1 img/gpu and `lr=0.04` for 16 GPUs \* 2 imgs/gpu.
-
-#### Training on a single GPU
-
-```shell
-python tools/train.py ${CONFIG_FILE} [optional arguments]
-```
-
-During training, log files and checkpoints will be saved to the working directory, which is specified by `work_dir` in the config file or via CLI argument `--work-dir`.
-
-#### Training on multiple GPUs
-
-We provide `tools/dist_train.sh` to launch training on multiple GPUs.
-The basic usage is as follows.
-
-```shell
-bash ./tools/dist_train.sh \
-    ${CONFIG_FILE} \
-    ${GPU_NUM} \
-    [optional arguments]
-```
-
-Optional arguments remain the same as stated above.
-
-If you would like to launch multiple jobs on a single machine, e.g., 2 jobs of 4-GPU training on a machine with 8 GPUs,
-you need to specify different ports (29500 by default) for each job to avoid communication conflict.
-
-If you use `dist_train.sh` to launch training jobs, you can set the port in commands.
-
-```shell
-CUDA_VISIBLE_DEVICES=0,1,2,3 PORT=29500 ./tools/dist_train.sh ${CONFIG_FILE} 4
-CUDA_VISIBLE_DEVICES=4,5,6,7 PORT=29501 ./tools/dist_train.sh ${CONFIG_FILE} 4
-```
-
-#### Examples of training VID model
-
-1. Train DFF on ImageNet VID and ImageNet DET, then evaluate the bbox mAP at the last epoch.
-
-   ```shell
-   ./tools/dist_train.sh configs/vid/time_swin_lite/faster_rcnn_time_swint_lite_fpn_0.000025_3x_tricks_stride3_train.py 8
    ```
