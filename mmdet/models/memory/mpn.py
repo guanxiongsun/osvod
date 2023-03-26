@@ -227,7 +227,7 @@ class MPN(BaseModule):
                 _output_single_img = _output_single_img.view(n, h, w, c).permute(0, 3, 1, 2).contiguous()
                 feats_all_imgs_in_batch.append(_output_single_img)
             output_all_imgs_in_batch = torch.cat(feats_all_imgs_in_batch, dim=0)
-        output_all_levels.append(output_all_imgs_in_batch)
+            output_all_levels.append(output_all_imgs_in_batch)
 
         return tuple(output_all_levels)
 
