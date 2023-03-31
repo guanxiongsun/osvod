@@ -5,20 +5,17 @@
 By [Guanxiong Sun](https://sunguanxiong.github.io).
 
 This repo contains the PyTorch implementations of the paper "Efficient One-stage Video Object Detection by Exploiting Temporal Consistency" published in ECCV 2022.
-The code is based on two open-source repo [mmdetection](https://github.com/open-mmlab/mmdetection).
 
-This is based on two open-source toolboxes: [mmtracking](https://github.com/open-mmlab/mmtracking) and [mmdetection](https://github.com/open-mmlab/mmdetection).
+The code based on two open-source toolboxes: [mmtracking](https://github.com/open-mmlab/mmtracking) and [mmdetection](https://github.com/open-mmlab/mmdetection).
 
 ## Main Results
 
 Pretrained models are now available at [Baidu](https://pan.baidu.com/s/1qjIAD3ohaJO8EF1mZ4nLEg) (code: neck) and Google Drive.
 
-|       Model        |  Backbone  | AP50 | AP (fast) | AP (med) | AP (slow) |                                             Link                                             |
-| :----------------: | :--------: | :--: | :-------: | :------: | :-------: | :------------------------------------------------------------------------------------------: |
-|     FasterRCNN     | ResNet-101 | 76.7 |   52.3    |   74.1   |   84.9    | [Google](https://drive.google.com/file/d/1W17f9GC60rHU47lUeOEfU--Ra-LTw3Tq/view?usp=sharing) |
-|     FasterRCNN     |   Swin-T   |  xx  |    xx     |    xx    |    xxx    | [Google](https://drive.google.com/file/d/1W17f9GC60rHU47lUeOEfU--Ra-LTw3Tq/view?usp=sharing) |
-|     FasterRCNN     |  TDViT-T   |  xx  |    xx     |    xx    |    xx     | [Google](https://drive.google.com/file/d/1ZnAdFafF1vW9Lnpw-RPF1AD_csw61lBY/view?usp=sharing) |
-| **TDViT_proposal** |  TDViT-T   |  xx  |     -     |    -     |     -     |                                          model url                                           |
+
+|  Model  |  Backbone  |  AP  | AP50 | AP75 | AP small | AP medium | AP large | Link |
+| :------: | :--------: | :--: | :--: | :--: | :------: | :-------- | :------- | :--- |
+| FCOS+LPN | ResNet-101 | 54.0 | 79.7 | 59.3 |   9.8   | 26.6      | 60.4     | xxx  |
 
 ## Installation
 
@@ -58,13 +55,12 @@ Optionally you can compile mmcv from source if you need to develop both mmcv and
 
 Please download ILSVRC2015 DET and ILSVRC2015 VID dataset from [here](http://image-net.org/challenges/LSVRC/2015/downloads). After that, we recommend to symlink the path to the datasets to `datasets/`. And the path structure should be as follows:
 
-    ./data/ILSVRC/
-    ./data/ILSVRC/Annotations/DET
-    ./data/ILSVRC/Annotations/VID
-    ./data/ILSVRC/Data/DET
-    ./data/ILSVRC/Data/VID
-    ./data/ILSVRC/ImageSets
-
+./data/ILSVRC/
+./data/ILSVRC/Annotations/DET
+./data/ILSVRC/Annotations/VID
+./data/ILSVRC/Data/DET
+./data/ILSVRC/Data/VID
+./data/ILSVRC/ImageSets
 **Note**: List txt files under `ImageSets` folder can be obtained from
 [here](https://github.com/msracver/Flow-Guided-Feature-Aggregation/tree/master/data/ILSVRC2015/ImageSets).
 
@@ -80,7 +76,6 @@ python ./tools/convert_datasets/ilsvrc/imagenet2coco_det.py -i ./data/ILSVRC -o 
 python ./tools/convert_datasets/ilsvrc/imagenet2coco_vid.py -i ./data/ILSVRC -o ./data/ILSVRC/annotations
 
 ```
-
 ## Usage
 
 ### Training
@@ -90,7 +85,6 @@ python ./tools/convert_datasets/ilsvrc/imagenet2coco_vid.py -i ./data/ILSVRC -o 
 ```shell
 python tools/train.py ${CONFIG_FILE} [optional arguments]
 ```
-
 #### Training on multiple GPUs
 
 We provide `tools/dist_train.sh` to launch training on multiple GPUs.
@@ -102,7 +96,6 @@ bash ./tools/dist_train.sh \
     ${GPU_NUM} \
     [optional arguments]
 ```
-
 Optional arguments remain the same as stated above.
 
 If you would like to launch multiple jobs on a single machine, e.g., 2 jobs of 4-GPU training on a machine with 8 GPUs,
@@ -114,7 +107,6 @@ If you use `dist_train.sh` to launch training jobs, you can set the port in comm
 CUDA_VISIBLE_DEVICES=0,1,2,3 PORT=29500 ./tools/dist_train.sh ${CONFIG_FILE} 4
 CUDA_VISIBLE_DEVICES=4,5,6,7 PORT=29501 ./tools/dist_train.sh ${CONFIG_FILE} 4
 ```
-
 #### Example
 
 1. Train EOVOD(FCOS) and then evaluate AP at the last epoch.
@@ -122,8 +114,6 @@ CUDA_VISIBLE_DEVICES=4,5,6,7 PORT=29501 ./tools/dist_train.sh ${CONFIG_FILE} 4
    ```shell
    ./tools/dist_train.sh configs/vid/time_swin_lite/faster_rcnn_time_swint_lite_fpn_0.000025_3x_tricks_stride3_train.py 8
    ```
-
-
 
 ### Inference
 
@@ -145,7 +135,6 @@ python tools/test.py ${CONFIG_FILE} [--checkpoint ${CHECKPOINT_FILE}] [--out ${R
 # multi-gpu testing
 ./tools/dist_test.sh ${CONFIG_FILE} ${GPU_NUM} [--checkpoint ${CHECKPOINT_FILE}] [--out ${RESULT_FILE}] [--eval ${EVAL_METRICS}]
 ```
-
 Optional arguments:
 
 - `CHECKPOINT_FILE`: Filename of the checkpoint. You do not need to define it when applying some MOT methods but specify the checkpoints in the config.
@@ -167,7 +156,6 @@ Assume that you have already downloaded the checkpoints to the directory `checkp
        --out results.pkl \
        --eval bbox
    ```
-
 2. Test DFF with 8 GPUs on ImageNet VID, and evaluate the bbox mAP.
 
    ```shell
