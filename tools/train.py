@@ -155,9 +155,8 @@ def main():
     # for video models
     if 'detector' in cfg.model.keys():
         # multi-frame video model
-        if cfg.model.get('type', False) in ("SELSA", "MAMBA", "RDN",
-                                            "FCOSAtt", "YOLOAtt", "CenterNetAtt",
-                                            "EOVOD"):
+        if cfg.model.get('type', False) in ("SELSA",
+                                            "FCOSAtt"):
             model = build_model(cfg.model)
 
         # single-frame video base model
